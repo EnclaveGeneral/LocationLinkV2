@@ -1,10 +1,16 @@
-// App.tsx - Complete navigation setup
+// App.tsx
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Text } from 'react-native';
+
+// Required for Amplify
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
+import { Amplify } from 'aws-amplify';
+import { getCurrentUser } from 'aws-amplify/auth';
 
 // Import screens
 import SignInScreen from './src/screens/SignInScreen';
@@ -14,18 +20,17 @@ import FriendsScreen from './src/screens/FriendsScreen';
 import RequestsScreen from './src/screens/RequestsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
-// Import Amplify config
-import { Amplify } from 'aws-amplify';
-import outputs from './amplify_outputs.json';
-import { authService } from './src/services/authService';
-
-// Configure Amplify
-Amplify.configure(outputs);
+// Try to import config - will fail if sandbox not running
+try {
+  const outputs = require('./amplify_outputs.json');
+  Amplify.configure(outputs);
+} catch (e) {
+  console.log('Amplify outputs not found. Run: npx ampx sandbox');
+}
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Main tab navigator
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -66,7 +71,7 @@ export default function App() {
 
   const checkAuthState = async () => {
     try {
-      const user = await authService.getCurrentUser();
+      const user = await getCurrentUser();
       setIsAuthenticated(!!user);
     } catch {
       setIsAuthenticated(false);

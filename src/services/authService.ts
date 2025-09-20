@@ -1,65 +1,45 @@
-import { Amplify } from 'aws-amplify';
+// src/services/authService.ts
+import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes } from 'aws-amplify/auth';
 
 export const authService = {
   async signUp(email: string, password: string, username: string) {
-    try {
-      const { signUp } = await import('aws-amplify/auth');
-      const result = await signUp({
-        username: email,
-        password,
-        options: {
-          userAttributes: {
-            email,
-            preferred_username: username,
-          },
+    const result = await signUp({
+      username: email,
+      password,
+      options: {
+        userAttributes: {
+          email,
+          preferred_username: username,
         },
-      });
-      return result;
-    } catch (error) {
-      throw error;
-    }
+      },
+    });
+    return result;
   },
 
   async confirmSignUp(email: string, code: string) {
-    try {
-      const { confirmSignUp } = await import('aws-amplify/auth');
-      await confirmSignUp({
-        username: email,
-        confirmationCode: code,
-      });
-      return true;
-    } catch (error) {
-      throw error;
-    }
+    const result = await confirmSignUp({
+      username: email,
+      confirmationCode: code,
+    });
+    return result.isSignUpComplete;
   },
 
   async signIn(email: string, password: string) {
-    try {
-      const { signIn } = await import('aws-amplify/auth');
-      await signIn({
-        username: email,
-        password,
-      });
-      return true;
-    } catch (error) {
-      throw error;
-    }
+    const result = await signIn({
+      username: email,
+      password,
+    });
+    return result.isSignedIn;
   },
 
   async signOut() {
-    try {
-      const { signOut } = await import('aws-amplify/auth');
-      await signOut();
-    } catch (error) {
-      throw error;
-    }
+    await signOut();
   },
 
   async getCurrentUser() {
     try {
-      const { getCurrentUser } = await import('aws-amplify/auth');
-      const user = await getCurrentUser();
-      return user;
+      const { username, userId } = await getCurrentUser();
+      return { username, userId };
     } catch {
       return null;
     }
@@ -67,7 +47,6 @@ export const authService = {
 
   async fetchUserAttributes() {
     try {
-      const { fetchUserAttributes } = await import('aws-amplify/auth');
       const attributes = await fetchUserAttributes();
       return attributes;
     } catch {

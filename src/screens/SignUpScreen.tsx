@@ -7,9 +7,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { authService } from '../services/authService';
-import { client } from '../services/amplifyConfig';
+import { dataService } from '../services/dataService';
 
 export default function SignUpScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -17,36 +18,52 @@ export default function SignUpScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
+    if (!email || !username || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
     try {
       await authService.signUp(email, password, username);
       setShowConfirm(true);
       Alert.alert('Success', 'Check your email for confirmation code');
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to sign up');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleConfirm = async () => {
+    setLoading(true);
     try {
       await authService.confirmSignUp(email, code);
 
-      // Sign in and create user profile
+      // Sign in after confirmation
       await authService.signIn(email, password);
 
-      // Create user profile in database
-      // Note: Amplify will automatically set the owner field
-      await client.models.User.create({
-        username: username,
-        email: email,
-        isLocationSharing: false,
-      });
+      // Get the current user
+      const user = await authService.getCurrentUser();
+      if (user) {
+        // Create user profile in database
+        await dataService.createUser({
+          id: user.userId,
+          username: username,
+          email: email,
+          isLocationSharing: false,
+        });
+      }
 
-      Alert.alert('Success', 'Account created! Please sign in.');
-      navigation.navigate('SignIn');
+      Alert.alert('Success', 'Account created! You are now signed in.');
+      navigation.replace('MainTabs');
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to confirm account');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,15 +71,34 @@ export default function SignUpScreen({ navigation }: any) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Confirm Account</Text>
+        <Text style={styles.subtitle}>Enter the code sent to {email}</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Confirmation Code"
           value={code}
           onChangeText={setCode}
           keyboardType="number-pad"
+          editable={!loading}
         />
-        <TouchableOpacity style={styles.button} onPress={handleConfirm}>
-          <Text style={styles.buttonText}>Confirm</Text>
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleConfirm}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>Confirm</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setShowConfirm(false)}
+          disabled={loading}
+        >
+          <Text style={styles.link}>Back to Sign Up</Text>
         </TouchableOpacity>
       </View>
     );
@@ -70,14 +106,18 @@ export default function SignUpScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Sign Up</Text>
+      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.subtitle}>Join LocationLink</Text>
+
       <TextInput
         style={styles.input}
         placeholder="Username"
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
+        editable={!loading}
       />
+
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -85,16 +125,35 @@ export default function SignUpScreen({ navigation }: any) {
         onChangeText={setEmail}
         keyboardType="email-address"
         autoCapitalize="none"
+        editable={!loading}
       />
+
       <TextInput
         style={styles.input}
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        editable={!loading}
       />
-      <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>Sign Up</Text>
+
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleSignUp}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text style={styles.buttonText}>Sign Up</Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => navigation.navigate('SignIn')}
+        disabled={loading}
+      >
+        <Text style={styles.link}>Already have an account? Sign In</Text>
       </TouchableOpacity>
     </View>
   );
@@ -105,12 +164,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 20,
+    backgroundColor: '#fff',
   },
   title: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
     textAlign: 'center',
+    marginBottom: 10,
+    color: '#4CAF50',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
     marginBottom: 30,
+    color: '#666',
   },
   input: {
     borderWidth: 1,
@@ -118,16 +185,27 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
     borderRadius: 8,
+    fontSize: 16,
   },
   button: {
     backgroundColor: '#4CAF50',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  link: {
+    color: '#4CAF50',
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 14,
   },
 });

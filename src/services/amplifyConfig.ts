@@ -1,14 +1,9 @@
 // src/services/amplifyConfig.ts
-import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/data';
-import outputs from '../../amplify_outputs.json';
 import type { Schema } from '../../amplify/data/resource';
 
-// Configure Amplify
-Amplify.configure(outputs);
-
-// Create and export the typed client
+// Create the typed client for data operations
 export const client = generateClient<Schema>();
 
-// For backward compatibility if needed
+// For backward compatibility
 export const getClient = () => client;

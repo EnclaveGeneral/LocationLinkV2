@@ -12,15 +12,6 @@
       "$amplify/*": [
         "../.amplify/generated/*"
       ]
-    },
-    "extends": "expo/tsconfig.base",
-    "compilerOptions": {
-      "strict": false,
-      "esModuleInterop": true,
-      "skipLibCheck": true,
-      "resolveJsonModule": true,
-      "allowSyntheticDefaultImports": true
-
     }
   }
 }
