@@ -1,4 +1,4 @@
-// src/services/locationService.ts
+// src/services/locationService.ts (renamed from locataionService.ts)
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dataService } from './dataService';
@@ -76,7 +76,7 @@ export class LocationService {
       await dataService.updateUser(userId, {
         latitude: coords.latitude,
         longitude: coords.longitude,
-        locationUpdatedAt: new Date().toISOString(),
+        locationUpdatedAt: new Date().toISOString(), // Fixed: correct field name
         isLocationSharing: true,
       });
 

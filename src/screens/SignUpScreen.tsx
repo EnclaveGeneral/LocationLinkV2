@@ -1,3 +1,4 @@
+// src/screens/SignUpScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -31,18 +32,16 @@ export default function SignUpScreen({ navigation }: any) {
     try {
       await authService.confirmSignUp(email, code);
 
-      // Create user profile in database
+      // Sign in and create user profile
       await authService.signIn(email, password);
-      const user = await authService.getCurrentUser();
 
-      if (user) {
-        await client.models.User.create({
-          id: user.userId,
-          username: username,
-          email: email,
-          isLocationSharing: false,
-        });
-      }
+      // Create user profile in database
+      // Note: Amplify will automatically set the owner field
+      await client.models.User.create({
+        username: username,
+        email: email,
+        isLocationSharing: false,
+      });
 
       Alert.alert('Success', 'Account created! Please sign in.');
       navigation.navigate('SignIn');
