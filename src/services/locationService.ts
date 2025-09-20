@@ -1,4 +1,4 @@
-// src/services/locationService.ts (renamed from locataionService.ts)
+// src/services/locationService.ts
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dataService } from './dataService';

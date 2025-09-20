@@ -1,28 +1,41 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
+import { getCurrentUser } from 'aws-amplify/auth';
+
 
 export default function TabLayout() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    checkAuth();
+  }, [])
+
+  const checkAuth = async() => {
+    try {
+      await getCurrentUser();
+      setIsAuthenticated(true);
+    } catch {
+      setIsAuthenticated(false);
+    }
+  };
+
+  if (isAuthenticated === null) {
+    return null;
+  }
+
+  if (isAuthenticated === false) {
+    return <Redirect href='/signin' />;
+  }
+
+
+
   return (
     <Tabs
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'alert';
-
-          if (route.name === 'index') {
-            iconName = focused ? 'map' : 'map-outline';
-          } else if (route.name === 'friends') {
-            iconName = focused ? 'people' : 'people-outline';
-          } else if (route.name === 'requests') {
-            iconName = focused ? 'person-add' : 'person-add-outline';
-          } else if (route.name === 'profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
+      screenOptions={{
         tabBarActiveTintColor: '#4CAF50',
         tabBarInactiveTintColor: 'gray',
-      })}
+      }}
     >
       <Tabs.Screen
         name="index"

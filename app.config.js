@@ -1,4 +1,3 @@
-// app.config.js
 export default {
   expo: {
     name: "LocationLink",
@@ -9,7 +8,6 @@ export default {
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
-    newArchEnabled: true,
     splash: {
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
@@ -23,8 +21,7 @@ export default {
       },
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "LocationLink needs access to your location to share it with your friends.",
-        NSLocationAlwaysAndWhenInUseUsageDescription: "LocationLink needs access to your location to continuously share it with your friends.",
-        NSLocationAlwaysUsageDescription: "LocationLink needs access to your location to share it with your friends even when the app is in the background."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "LocationLink needs access to your location to continuously share it with your friends."
       }
     },
     android: {
@@ -40,27 +37,19 @@ export default {
       },
       permissions: [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
+        "ACCESS_COARSE_LOCATION"
       ]
-    },
-    web: {
-      favicon: "./assets/favicon.png"
     },
     plugins: [
       "expo-router",
-      "expo-secure-store",
-      "expo-location"
-    ],
-    extra: {
-      // These will be accessible in the app via Constants.expoConfig.extra
-      googleMapsWebApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_WEB,
-      // Add any other non-sensitive config here
-      eas: {
-        projectId: process.env.EAS_PROJECT_ID
-      }
-    },
-    // EAS Build configuration
-    owner: "EncalvePresident", // Replace with your Expo username
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: "Allow LocationLink to use your location.",
+          locationAlwaysPermission: "Allow LocationLink to use your location to share with your friends.",
+          locationWhenInUsePermission: "Allow LocationLink to use your location to share with your friends."
+        }
+      ]
+    ]
   }
 };
