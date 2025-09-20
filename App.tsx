@@ -1,3 +1,9 @@
+// Required for Amplify
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
+import { Amplify } from 'aws-amplify';
+import { getCurrentUser } from 'aws-amplify/auth';
+
 // App.tsx
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -5,12 +11,6 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View, Text } from 'react-native';
-
-// Required for Amplify
-import 'react-native-get-random-values';
-import 'react-native-url-polyfill/auto';
-import { Amplify } from 'aws-amplify';
-import { getCurrentUser } from 'aws-amplify/auth';
 
 // Import screens
 import SignInScreen from './src/screens/SignInScreen';
