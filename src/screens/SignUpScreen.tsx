@@ -55,7 +55,7 @@ export default function SignUpScreen() {
           id: user.userId,
           username: username,
           email: email,
-          isLocationSharing: false,
+          isLocationSharing: true,
         });
 
         // IMPORTANT: Create public profile for username search

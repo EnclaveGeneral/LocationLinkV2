@@ -13,7 +13,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { friendService } from '../services/friendService';
-import { client } from '../services/amplifyConfig';
+import { SubscriptionService } from '../services/subscriptionService';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function MapScreen() {
@@ -29,18 +29,14 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
-  const subscriptionsRef = useRef<any[]>([]);
+  const subscriptionServiceRef = useRef<SubscriptionService | null>(null);
 
   useEffect(() => {
     initializeMap();
 
     // Cleanup subscriptions on unmount
     return () => {
-      subscriptionsRef.current.forEach(sub => {
-        if (sub && typeof sub.unsubscribe === 'function') {
-          sub.unsubscribe();
-        }
-      });
+      subscriptionServiceRef.current?.unsubscribeAll();
     };
   }, []);
 
@@ -64,13 +60,12 @@ export default function MapScreen() {
           longitudeDelta: 0.01,
         });
 
-        // Start continuous tracking with callback for UI updates
         await locationService.startLocationTracking(user.userId, (newLocation) => {
           setUserLocation(newLocation);
         });
       }
 
-      // Load friends and set up subscriptions
+      // Load friends and setup subscriptions
       await loadFriendsWithSubscriptions(user.userId);
     } catch (error) {
       console.error('Error initializing map:', error);
@@ -84,7 +79,7 @@ export default function MapScreen() {
       // Get initial friends list
       const friendsList = await friendService.getFriends(userId);
 
-      // Create a map for efficient updates
+      // Populate map with location-sharing friends
       const friendsMap = new Map();
       friendsList.forEach(friend => {
         if (friend.isLocationSharing && friend.latitude && friend.longitude) {
@@ -93,100 +88,57 @@ export default function MapScreen() {
       });
       setFriends(friendsMap);
 
-      // Subscribe to each friend's location updates
-      friendsList.forEach(friend => {
-        subscribeToFriendLocationUpdates(friend.id);
+      // Initialize SubscriptionService
+      subscriptionServiceRef.current = SubscriptionService.getInstance();
+
+      // Subscribe to friend locations via SubscriptionService
+      const friendIds = friendsList.map(f => f.id);
+      await subscriptionServiceRef.current.subscribeFriendLocations(friendIds, (updatedFriend) => {
+        setFriends(prev => {
+          const newMap = new Map(prev);
+          if (updatedFriend.isLocationSharing && updatedFriend.latitude && updatedFriend.longitude) {
+            newMap.set(updatedFriend.id, {
+              ...updatedFriend,
+              locationUpdatedAt: new Date().toISOString(),
+            });
+          } else {
+            newMap.delete(updatedFriend.id);
+          }
+          return newMap;
+        });
       });
 
-      // Subscribe to new friendships
-      subscribeToNewFriendships(userId);
+      // Subscribe to new friendships dynamically
+      await subscriptionServiceRef.current.subscribeNewFriendships(userId, async (newFriend) => {
+        if (!friendsMap.has(newFriend.id)) {
+          setFriends(prev => {
+            const newMap = new Map(prev);
+            if (newFriend.isLocationSharing && newFriend.latitude && newFriend.longitude) {
+              newMap.set(newFriend.id, newFriend);
+            }
+            return newMap;
+          });
 
-    } catch (error) {
-      console.error('Error loading friends:', error);
-    }
-  };
-
-  const subscribeToFriendLocationUpdates = (friendId: string) => {
-    try {
-      // Subscribe to User model updates for this specific friend
-      const subscription = client.models.User.observeQuery({
-        filter: { id: { eq: friendId } }
-      }).subscribe({
-        next: ({ items }) => {
-          if (items.length > 0) {
-            const friend = items[0];
+          // Subscribe to new friend's location
+          await subscriptionServiceRef.current.subscribeFriendLocations([newFriend.id], (updatedFriend) => {
             setFriends(prev => {
               const newMap = new Map(prev);
-
-              // If friend is sharing location and has coordinates, update/add them
-              if (friend.isLocationSharing && friend.latitude && friend.longitude) {
-                newMap.set(friend.id, friend);
+              if (updatedFriend.isLocationSharing && updatedFriend.latitude && updatedFriend.longitude) {
+                newMap.set(updatedFriend.id, {
+                  ...updatedFriend,
+                  locationUpdatedAt: new Date().toISOString(),
+                });
               } else {
-                // If friend stopped sharing, remove from map
-                newMap.delete(friend.id);
+                newMap.delete(updatedFriend.id);
               }
-
               return newMap;
             });
-          }
-        },
-        error: (error) => {
-          console.error('Subscription error for friend:', friendId, error);
+          });
         }
       });
 
-      subscriptionsRef.current.push(subscription);
     } catch (error) {
-      console.error('Error subscribing to friend updates:', error);
-    }
-  };
-
-  const subscribeToNewFriendships = (userId: string) => {
-    try {
-      // Subscribe to new Friend records where we're involved
-      const friendshipSub = client.models.Friend.observeQuery({
-        filter: {
-          or: [
-            { userId: { eq: userId } },
-            { friendId: { eq: userId } }
-          ]
-        }
-      }).subscribe({
-        next: async ({ items }) => {
-          // When a new friendship is created, load that friend's data
-          for (const friendship of items) {
-            const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
-
-            // Check if we're already subscribed to this friend
-            if (!friends.has(friendId)) {
-              try {
-                const friendData = await client.models.User.get({ id: friendId });
-                if (friendData.data) {
-                  const friend = friendData.data;
-                  if (friend.isLocationSharing && friend.latitude && friend.longitude) {
-                    setFriends(prev => {
-                      const newMap = new Map(prev);
-                      newMap.set(friend.id, friend);
-                      return newMap;
-                    });
-                  }
-                  // Subscribe to this new friend's updates
-                  subscribeToFriendLocationUpdates(friendId);
-                }
-              } catch (error) {
-                console.error('Error loading new friend data:', error);
-              }
-            }
-          }
-        },
-        error: (error) => {
-          console.error('Friendship subscription error:', error);
-        }
-      });
-
-      subscriptionsRef.current.push(friendshipSub);
-    } catch (error) {
-      console.error('Error subscribing to friendships:', error);
+      console.error('Error loading friends or subscribing:', error);
     }
   };
 
@@ -221,6 +173,12 @@ export default function MapScreen() {
       };
       mapRef.current.animateToRegion(newRegion, 1000);
     }
+  };
+
+  const refreshFriends = async () => {
+    if (!currentUserId) return;
+    await loadFriendsWithSubscriptions(currentUserId);
+    Alert.alert('Refreshed', 'Friend locations updated');
   };
 
   if (loading) {
@@ -275,10 +233,7 @@ export default function MapScreen() {
         {friendsArray.map((friend) => (
           <Marker
             key={friend.id}
-            coordinate={{
-              latitude: friend.latitude,
-              longitude: friend.longitude,
-            }}
+            coordinate={{ latitude: friend.latitude, longitude: friend.longitude }}
             title={friend.username}
             description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'Unknown'}`}
           >
@@ -291,22 +246,27 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      <TouchableOpacity
-        style={styles.centerButton}
-        onPress={centerOnUser}
-      >
+      <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
         <Ionicons name="locate" size={24} color="#666" />
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.refreshButton} onPress={refreshFriends}>
+        <Ionicons name="refresh" size={24} color="#666" />
       </TouchableOpacity>
 
       <View style={styles.statusBar}>
         <Text style={styles.statusText}>
           {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
+        {friendsArray.length > 0 && (
+          <Text style={styles.statusSubtext}>Real-time tracking active</Text>
+        )}
       </View>
     </View>
   );
 }
 
+// Styles remain the same as your previous version
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -338,7 +298,10 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     paddingHorizontal: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
@@ -356,7 +319,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
@@ -386,7 +352,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  refreshButton: {
+    position: 'absolute',
+    right: 15,
+    bottom: 160,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
@@ -403,6 +391,11 @@ const styles = StyleSheet.create({
   statusText: {
     color: 'white',
     fontSize: 14,
+  },
+  statusSubtext: {
+    color: '#90EE90',
+    fontSize: 10,
+    marginTop: 2,
   },
   userMarker: {
     width: 20,
@@ -434,3 +427,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+

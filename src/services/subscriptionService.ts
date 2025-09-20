@@ -39,6 +39,45 @@ export class SubscriptionService {
     }
   }
 
+  // Subscribe to new friendships being created
+  async subscribeNewFriendships(userId: string, onNewFriend: (friend: any) => void) {
+    try {
+      // Subscribe to Friend model for new friendships
+      const sub = client.models.Friend.observeQuery({
+        filter: {
+          or: [
+            { userId: { eq: userId } },
+            { friendId: { eq: userId } }
+          ]
+        }
+      }).subscribe({
+        next: async ({ items }) => {
+          // Process new friendships
+          for (const friendship of items) {
+            const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
+
+            // Fetch the friend's user data
+            try {
+              const friendData = await client.models.User.get({ id: friendId });
+              if (friendData.data) {
+                onNewFriend(friendData.data);
+              }
+            } catch (error) {
+              console.error('Error fetching new friend data:', error);
+            }
+          }
+        },
+        error: (error) => {
+          console.error('New friendship subscription error:', error);
+        }
+      });
+
+      this.subscriptions.push(sub);
+    } catch (error) {
+      console.error('Error setting up new friendship subscriptions:', error);
+    }
+  }
+
   // Subscribe to friend requests
   async subscribeFriendRequests(userId: string, onUpdate: (requests: any[]) => void) {
     try {
@@ -104,6 +143,28 @@ export class SubscriptionService {
       this.subscriptions.push(sub);
     } catch (error) {
       console.error('Error setting up friendship subscriptions:', error);
+    }
+  }
+
+  // Subscribe to user's own location sharing status
+  async subscribeUserSettings(userId: string, onUpdate: (user: any) => void) {
+    try {
+      const sub = client.models.User.observeQuery({
+        filter: { id: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          if (items.length > 0) {
+            onUpdate(items[0]);
+          }
+        },
+        error: (error) => {
+          console.error('User settings subscription error:', error);
+        }
+      });
+
+      this.subscriptions.push(sub);
+    } catch (error) {
+      console.error('Error setting up user settings subscription:', error);
     }
   }
 
