@@ -1,4 +1,5 @@
 // src/screens/SignUpScreen.tsx
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   View,
@@ -12,7 +13,7 @@ import {
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 
-export default function SignUpScreen({ navigation }: any) {
+export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -65,7 +66,7 @@ export default function SignUpScreen({ navigation }: any) {
       }
 
       Alert.alert('Success', 'Account created! You are now signed in.');
-      navigation.replace('MainTabs');
+      router.replace('/(tabs)');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to confirm account');
     } finally {
@@ -156,7 +157,7 @@ export default function SignUpScreen({ navigation }: any) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => navigation.navigate('SignIn')}
+        onPress={() => router.push('/signin')}
         disabled={loading}
       >
         <Text style={styles.link}>Already have an account? Sign In</Text>

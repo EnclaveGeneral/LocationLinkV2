@@ -1,5 +1,6 @@
 // src/screens/ProfileScreen.tsx
 import React, { useState, useEffect } from 'react';
+import { router } from 'expo-router';
 import {
   View,
   Text,
@@ -14,7 +15,7 @@ import { dataService } from '../services/dataService';
 import { LocationService } from '../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ProfileScreen({ navigation }: any) {
+export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [isLocationSharing, setIsLocationSharing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,7 +77,7 @@ export default function ProfileScreen({ navigation }: any) {
               const locationService = LocationService.getInstance();
               await locationService.stopLocationTracking();
               await authService.signOut();
-              navigation.replace('SignIn');
+              router.replace('/signin');
             } catch (error) {
               Alert.alert('Error', 'Failed to sign out');
             }

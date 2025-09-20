@@ -4,6 +4,8 @@ export default {
     name: "LocationLink",
     slug: "LocationLink",
     version: "1.0.0",
+    scheme: "locationLink",
+    platforms: ["android", "ios"],
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -46,6 +48,7 @@ export default {
       favicon: "./assets/favicon.png"
     },
     plugins: [
+      "expo-router",
       "expo-secure-store",
       "expo-location"
     ],

@@ -1,4 +1,5 @@
 // src/screens/SignInScreen.tsx
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   View,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { authService } from '../services/authService';
 
-export default function SignInScreen({ navigation }: any) {
+export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function SignInScreen({ navigation }: any) {
     try {
       await authService.signIn(email, password);
       // Navigation will be handled by auth state listener
-      navigation.replace('MainTabs');
+      router.replace('/(tabs)');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to sign in');
     } finally {
@@ -71,7 +72,7 @@ export default function SignInScreen({ navigation }: any) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => navigation.navigate('SignUp')}
+        onPress={() => router.push('/signup')}
         disabled={loading}
       >
         <Text style={styles.link}>Don't have an account? Sign Up</Text>
