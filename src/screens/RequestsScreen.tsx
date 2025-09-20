@@ -1,5 +1,5 @@
 // src/screens/RequestsScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
+import { client } from '../services/amplifyConfig';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function RequestsScreen() {
@@ -22,19 +23,118 @@ export default function RequestsScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showSent, setShowSent] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const subscriptionsRef = useRef<any[]>([]);
 
   useEffect(() => {
-    loadRequests();
+    initializeRequests();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      subscriptionsRef.current.forEach(sub => {
+        if (sub && typeof sub.unsubscribe === 'function') {
+          sub.unsubscribe();
+        }
+      });
+    };
   }, []);
 
-  const loadRequests = async () => {
-    try {
-      const user = await authService.getCurrentUser();
-      if (!user) return;
+  const initializeRequests = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user) return;
 
+    setCurrentUserId(user.userId);
+    await loadRequests(user.userId);
+    setupSubscriptions(user.userId);
+  };
+
+  const setupSubscriptions = (userId: string) => {
+    try {
+      // Subscribe to incoming friend requests
+      const incomingSub = client.models.FriendRequest.observeQuery({
+        filter: {
+          and: [
+            { receiverId: { eq: userId } },
+            { status: { eq: 'PENDING' } }
+          ]
+        }
+      }).subscribe({
+        next: ({ items }) => {
+          setPendingRequests(items);
+
+          // Show notification if there are new requests
+          if (items.length > pendingRequests.length) {
+            // You could add a local notification here
+            console.log('New friend request received!');
+          }
+        },
+        error: (error) => {
+          console.error('Error in incoming requests subscription:', error);
+        }
+      });
+
+      // Subscribe to sent friend requests
+      const sentSub = client.models.FriendRequest.observeQuery({
+        filter: {
+          and: [
+            { senderId: { eq: userId } },
+            { status: { eq: 'PENDING' } }
+          ]
+        }
+      }).subscribe({
+        next: ({ items }) => {
+          setSentRequests(items);
+        },
+        error: (error) => {
+          console.error('Error in sent requests subscription:', error);
+        }
+      });
+
+      // Subscribe to status changes (for when sent requests get accepted/rejected)
+      const statusSub = client.models.FriendRequest.observeQuery({
+        filter: {
+          or: [
+            { senderId: { eq: userId } },
+            { receiverId: { eq: userId } }
+          ]
+        }
+      }).subscribe({
+        next: async ({ items }) => {
+          // Filter for pending requests only
+          const pending = items.filter(req =>
+            req.status === 'PENDING' && req.receiverId === userId
+          );
+          const sent = items.filter(req =>
+            req.status === 'PENDING' && req.senderId === userId
+          );
+
+          setPendingRequests(pending);
+          setSentRequests(sent);
+
+          // Check for accepted requests to show notification
+          const accepted = items.find(req =>
+            req.status === 'ACCEPTED' && req.senderId === userId
+          );
+          if (accepted) {
+            Alert.alert('Request Accepted!', `${accepted.receiverUsername} accepted your friend request!`);
+          }
+        },
+        error: (error) => {
+          console.error('Error in status subscription:', error);
+        }
+      });
+
+      subscriptionsRef.current.push(incomingSub, sentSub, statusSub);
+    } catch (error) {
+      console.error('Error setting up subscriptions:', error);
+    }
+  };
+
+  const loadRequests = async (userId: string) => {
+    try {
       const [pending, sent] = await Promise.all([
-        friendService.getPendingRequests(user.userId),
-        friendService.getSentRequests(user.userId),
+        friendService.getPendingRequests(userId),
+        friendService.getSentRequests(userId),
       ]);
 
       setPendingRequests(pending);
@@ -46,7 +146,9 @@ export default function RequestsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadRequests();
+    if (currentUserId) {
+      await loadRequests(currentUserId);
+    }
     setRefreshing(false);
   };
 
@@ -61,7 +163,7 @@ export default function RequestsScreen() {
       await friendService.sendFriendRequest(searchUsername.trim());
       Alert.alert('Success', 'Friend request sent!');
       setSearchUsername('');
-      await loadRequests();
+      // The subscription will automatically update the sent requests
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -72,8 +174,8 @@ export default function RequestsScreen() {
   const acceptRequest = async (request: any) => {
     try {
       await friendService.acceptFriendRequest(request.id);
-      Alert.alert('Success', 'Friend request accepted!');
-      await loadRequests();
+      Alert.alert('Success', `You are now friends with ${request.senderUsername}!`);
+      // The subscription will automatically update the lists
     } catch (error) {
       Alert.alert('Error', 'Failed to accept request');
     }
@@ -82,9 +184,19 @@ export default function RequestsScreen() {
   const rejectRequest = async (request: any) => {
     try {
       await friendService.rejectFriendRequest(request.id);
-      await loadRequests();
+      // The subscription will automatically update the lists
     } catch (error) {
       Alert.alert('Error', 'Failed to reject request');
+    }
+  };
+
+  const cancelSentRequest = async (request: any) => {
+    try {
+      await friendService.rejectFriendRequest(request.id);
+      Alert.alert('Success', 'Request cancelled');
+      // The subscription will automatically update the lists
+    } catch (error) {
+      Alert.alert('Error', 'Failed to cancel request');
     }
   };
 
@@ -97,6 +209,9 @@ export default function RequestsScreen() {
             {item.senderUsername || 'Unknown'}
           </Text>
           <Text style={styles.requestSubtext}>Wants to be your friend</Text>
+          <Text style={styles.requestTime}>
+            {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
+          </Text>
         </View>
       </View>
       <View style={styles.requestButtons}>
@@ -125,8 +240,17 @@ export default function RequestsScreen() {
             {item.receiverUsername || 'Unknown'}
           </Text>
           <Text style={styles.requestSubtext}>Pending</Text>
+          <Text style={styles.requestTime}>
+            {item.createdAt ? `Sent ${new Date(item.createdAt).toLocaleDateString()}` : ''}
+          </Text>
         </View>
       </View>
+      <TouchableOpacity
+        style={[styles.button, styles.cancelButton]}
+        onPress={() => cancelSentRequest(item)}
+      >
+        <Text style={styles.cancelText}>Cancel</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -164,6 +288,11 @@ export default function RequestsScreen() {
           <Text style={[styles.tabText, !showSent && styles.activeTabText]}>
             Received ({pendingRequests.length})
           </Text>
+          {pendingRequests.length > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{pendingRequests.length}</Text>
+            </View>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, showSent && styles.activeTab]}
@@ -184,6 +313,11 @@ export default function RequestsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
+            <Ionicons
+              name={showSent ? "send-outline" : "mail-open-outline"}
+              size={60}
+              color="#ddd"
+            />
             <Text style={styles.emptyText}>
               {showSent ? 'No sent requests' : 'No pending requests'}
             </Text>
@@ -243,6 +377,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 15,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   activeTab: {
     borderBottomWidth: 2,
@@ -254,6 +390,18 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: '#4CAF50',
     fontWeight: '600',
+  },
+  badge: {
+    marginLeft: 5,
+    backgroundColor: '#FF9800',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   requestItem: {
     flexDirection: 'row',
@@ -272,6 +420,7 @@ const styles = StyleSheet.create({
   },
   requestText: {
     marginLeft: 15,
+    flex: 1,
   },
   requestUsername: {
     fontSize: 16,
@@ -280,6 +429,12 @@ const styles = StyleSheet.create({
   requestSubtext: {
     fontSize: 14,
     color: '#666',
+    marginTop: 2,
+  },
+  requestTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
   requestButtons: {
     flexDirection: 'row',
@@ -298,11 +453,23 @@ const styles = StyleSheet.create({
   rejectButton: {
     backgroundColor: '#f44336',
   },
+  cancelButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+    backgroundColor: '#f0f0f0',
+  },
+  cancelText: {
+    color: '#666',
+    fontSize: 14,
+  },
   emptyContainer: {
     alignItems: 'center',
     paddingTop: 50,
   },
   emptyText: {
     color: '#999',
+    marginTop: 10,
+    fontSize: 16,
   },
 });

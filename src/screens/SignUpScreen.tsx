@@ -49,12 +49,18 @@ export default function SignUpScreen({ navigation }: any) {
       // Get the current user
       const user = await authService.getCurrentUser();
       if (user) {
-        // Create user profile in database
+        // Create user profile in database (viewers will be created automatically)
         await dataService.createUser({
           id: user.userId,
           username: username,
           email: email,
           isLocationSharing: false,
+        });
+
+        // IMPORTANT: Create public profile for username search
+        await dataService.createPublicProfile({
+          userId: user.userId,
+          username: username,
         });
       }
 

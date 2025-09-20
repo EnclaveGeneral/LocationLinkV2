@@ -13,6 +13,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { friendService } from '../services/friendService';
+import { client } from '../services/amplifyConfig';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function MapScreen() {
@@ -24,18 +25,31 @@ export default function MapScreen() {
     longitudeDelta: 0.0421,
   });
   const [userLocation, setUserLocation] = useState<any>(null);
-  const [friends, setFriends] = useState<any[]>([]);
+  const [friends, setFriends] = useState<Map<string, any>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const subscriptionsRef = useRef<any[]>([]);
 
   useEffect(() => {
     initializeMap();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      subscriptionsRef.current.forEach(sub => {
+        if (sub && typeof sub.unsubscribe === 'function') {
+          sub.unsubscribe();
+        }
+      });
+    };
   }, []);
 
   const initializeMap = async () => {
     try {
       const user = await authService.getCurrentUser();
       if (!user) return;
+
+      setCurrentUserId(user.userId);
 
       // Start location tracking
       const locationService = LocationService.getInstance();
@@ -50,14 +64,14 @@ export default function MapScreen() {
           longitudeDelta: 0.01,
         });
 
-        // Start continuous tracking
+        // Start continuous tracking with callback for UI updates
         await locationService.startLocationTracking(user.userId, (newLocation) => {
           setUserLocation(newLocation);
         });
       }
 
-      // Load friends
-      await loadFriends(user.userId);
+      // Load friends and set up subscriptions
+      await loadFriendsWithSubscriptions(user.userId);
     } catch (error) {
       console.error('Error initializing map:', error);
     } finally {
@@ -65,22 +79,122 @@ export default function MapScreen() {
     }
   };
 
-  const loadFriends = async (userId: string) => {
+  const loadFriendsWithSubscriptions = async (userId: string) => {
     try {
+      // Get initial friends list
       const friendsList = await friendService.getFriends(userId);
-      const friendsWithLocation = friendsList.filter(f =>
-        f.isLocationSharing && f.latitude && f.longitude
-      );
-      setFriends(friendsWithLocation);
+
+      // Create a map for efficient updates
+      const friendsMap = new Map();
+      friendsList.forEach(friend => {
+        if (friend.isLocationSharing && friend.latitude && friend.longitude) {
+          friendsMap.set(friend.id, friend);
+        }
+      });
+      setFriends(friendsMap);
+
+      // Subscribe to each friend's location updates
+      friendsList.forEach(friend => {
+        subscribeToFriendLocationUpdates(friend.id);
+      });
+
+      // Subscribe to new friendships
+      subscribeToNewFriendships(userId);
+
     } catch (error) {
       console.error('Error loading friends:', error);
+    }
+  };
+
+  const subscribeToFriendLocationUpdates = (friendId: string) => {
+    try {
+      // Subscribe to User model updates for this specific friend
+      const subscription = client.models.User.observeQuery({
+        filter: { id: { eq: friendId } }
+      }).subscribe({
+        next: ({ items }) => {
+          if (items.length > 0) {
+            const friend = items[0];
+            setFriends(prev => {
+              const newMap = new Map(prev);
+
+              // If friend is sharing location and has coordinates, update/add them
+              if (friend.isLocationSharing && friend.latitude && friend.longitude) {
+                newMap.set(friend.id, friend);
+              } else {
+                // If friend stopped sharing, remove from map
+                newMap.delete(friend.id);
+              }
+
+              return newMap;
+            });
+          }
+        },
+        error: (error) => {
+          console.error('Subscription error for friend:', friendId, error);
+        }
+      });
+
+      subscriptionsRef.current.push(subscription);
+    } catch (error) {
+      console.error('Error subscribing to friend updates:', error);
+    }
+  };
+
+  const subscribeToNewFriendships = (userId: string) => {
+    try {
+      // Subscribe to new Friend records where we're involved
+      const friendshipSub = client.models.Friend.observeQuery({
+        filter: {
+          or: [
+            { userId: { eq: userId } },
+            { friendId: { eq: userId } }
+          ]
+        }
+      }).subscribe({
+        next: async ({ items }) => {
+          // When a new friendship is created, load that friend's data
+          for (const friendship of items) {
+            const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
+
+            // Check if we're already subscribed to this friend
+            if (!friends.has(friendId)) {
+              try {
+                const friendData = await client.models.User.get({ id: friendId });
+                if (friendData.data) {
+                  const friend = friendData.data;
+                  if (friend.isLocationSharing && friend.latitude && friend.longitude) {
+                    setFriends(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(friend.id, friend);
+                      return newMap;
+                    });
+                  }
+                  // Subscribe to this new friend's updates
+                  subscribeToFriendLocationUpdates(friendId);
+                }
+              } catch (error) {
+                console.error('Error loading new friend data:', error);
+              }
+            }
+          }
+        },
+        error: (error) => {
+          console.error('Friendship subscription error:', error);
+        }
+      });
+
+      subscriptionsRef.current.push(friendshipSub);
+    } catch (error) {
+      console.error('Error subscribing to friendships:', error);
     }
   };
 
   const searchFriend = () => {
     if (!searchText.trim()) return;
 
-    const friend = friends.find(f =>
+    const friendsArray = Array.from(friends.values());
+    const friend = friendsArray.find(f =>
       f.username.toLowerCase().includes(searchText.toLowerCase())
     );
 
@@ -118,6 +232,8 @@ export default function MapScreen() {
     );
   }
 
+  const friendsArray = Array.from(friends.values());
+
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
@@ -130,6 +246,10 @@ export default function MapScreen() {
             onChangeText={setSearchText}
             onSubmitEditing={searchFriend}
           />
+        </View>
+        <View style={styles.liveIndicator}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>Live</Text>
         </View>
       </View>
 
@@ -152,7 +272,7 @@ export default function MapScreen() {
           </Marker>
         )}
 
-        {friends.map((friend) => (
+        {friendsArray.map((friend) => (
           <Marker
             key={friend.id}
             coordinate={{
@@ -160,6 +280,7 @@ export default function MapScreen() {
               longitude: friend.longitude,
             }}
             title={friend.username}
+            description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'Unknown'}`}
           >
             <View style={styles.friendMarker}>
               <Text style={styles.friendMarkerText}>
@@ -176,6 +297,12 @@ export default function MapScreen() {
       >
         <Ionicons name="locate" size={24} color="#666" />
       </TouchableOpacity>
+
+      <View style={styles.statusBar}>
+        <Text style={styles.statusText}>
+          {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
+        </Text>
+      </View>
     </View>
   );
 }
@@ -199,8 +326,12 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'white',
@@ -216,6 +347,30 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 45,
     marginLeft: 10,
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
+    marginRight: 5,
+  },
+  liveText: {
+    color: '#4CAF50',
+    fontWeight: '600',
   },
   map: {
     flex: 1,
@@ -235,6 +390,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  statusBar: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  statusText: {
+    color: 'white',
+    fontSize: 14,
   },
   userMarker: {
     width: 20,

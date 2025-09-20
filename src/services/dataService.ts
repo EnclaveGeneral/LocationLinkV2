@@ -5,7 +5,9 @@ export const dataService = {
   // User operations
   async createUser(userData: any) {
     try {
-      const { data, errors } = await client.models.User.create(userData);
+      // Don't pass viewers explicitly - it's created implicitly by Amplify
+      const { viewers, ...userDataWithoutViewers } = userData;
+      const { data, errors } = await client.models.User.create(userDataWithoutViewers);
       if (errors) {
         console.error('Create user errors:', errors);
         throw new Error('Failed to create user');
@@ -57,10 +59,85 @@ export const dataService = {
     }
   },
 
-  // Friend operations
-  async createFriend(userId: string, friendId: string) {
+  // PublicProfile operations
+  async createPublicProfile(profileData: any) {
     try {
-      const { data, errors } = await client.models.Friend.create({ userId, friendId });
+      const { data, errors } = await client.models.PublicProfile.create(profileData);
+      if (errors) {
+        console.error('Create public profile errors:', errors);
+        throw new Error('Failed to create public profile');
+      }
+      return data;
+    } catch (error) {
+      console.error('Create public profile error:', error);
+      throw error;
+    }
+  },
+
+  async getPublicProfile(userId: string) {
+    try {
+      const { data, errors } = await client.models.PublicProfile.list({
+        filter: { userId: { eq: userId } }
+      });
+      if (errors) {
+        console.error('Get public profile errors:', errors);
+      }
+      return data && data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error('Get public profile error:', error);
+      return null;
+    }
+  },
+
+  async searchPublicProfiles(username: string) {
+    try {
+      const { data, errors } = await client.models.PublicProfile.list({
+        filter: { username: { eq: username } }
+      });
+      if (errors) {
+        console.error('Search public profiles errors:', errors);
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Search public profiles error:', error);
+      return [];
+    }
+  },
+
+  async updatePublicProfile(userId: string, updates: any) {
+    try {
+      // First get the profile
+      const profiles = await this.searchPublicProfiles(userId);
+      if (!profiles || profiles.length === 0) {
+        throw new Error('Public profile not found');
+      }
+
+      const { data, errors } = await client.models.PublicProfile.update({
+        id: profiles[0].id,
+        ...updates
+      });
+      if (errors) {
+        console.error('Update public profile errors:', errors);
+        throw new Error('Failed to update public profile');
+      }
+      return data;
+    } catch (error) {
+      console.error('Update public profile error:', error);
+      throw error;
+    }
+  },
+
+  // Friend operations
+  async createFriend(userId: string, friendId: string, userUsername?: string, friendUsername?: string, owners?: string[]) {
+    try {
+      const { data, errors } = await client.models.Friend.create({
+        userId,
+        friendId,
+        userUsername,
+        friendUsername,
+        // Type assertion to handle TypeScript type issues
+        owners: owners || [userId, friendId] as any
+      });
       if (errors) {
         console.error('Create friend errors:', errors);
         throw new Error('Failed to create friend');
@@ -102,7 +179,11 @@ export const dataService = {
   // Friend Request operations
   async createFriendRequest(requestData: any) {
     try {
-      const { data, errors } = await client.models.FriendRequest.create(requestData);
+      const { data, errors } = await client.models.FriendRequest.create({
+        ...requestData,
+        // Type assertion to handle TypeScript type issues
+        owners: (requestData.owners || [requestData.senderId, requestData.receiverId]) as any
+      });
       if (errors) {
         console.error('Create friend request errors:', errors);
         throw new Error('Failed to create friend request');
@@ -113,6 +194,7 @@ export const dataService = {
       throw error;
     }
   },
+
 
   async updateFriendRequest(id: string, updates: any) {
     try {
