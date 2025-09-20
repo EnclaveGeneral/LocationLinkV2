@@ -10,7 +10,6 @@ web-build/
 expo-env.d.ts
 
 # Native
-.kotlin/
 *.orig.*
 *.jks
 *.p8
@@ -30,7 +29,11 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files - CRITICAL FOR SECURITY
+.env
+.env.local
+.env.production
+.env.development
 .env*.local
 
 # typescript
@@ -40,9 +43,21 @@ yarn-error.*
 /ios
 /android
 
-
 # amplify
 node_modules
 .amplify
 amplify_outputs*
 amplifyconfiguration*
+
+# EAS
+eas.json
+
+# API Keys and secrets
+**/GoogleService-Info.plist
+**/google-services.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
