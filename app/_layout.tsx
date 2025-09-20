@@ -1,89 +1,98 @@
-import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet } from 'react-native';
-import { useSubscriptions } from '../src/contexts/SubscriptionContext';
+// app/_layout.tsx
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { Amplify } from 'aws-amplify';
+import { getCurrentUser } from 'aws-amplify/auth';
 
-export default function TabLayout() {
-  const { pendingRequests, friendsOnline } = useSubscriptions();
+// Import the config
+import amplifyOutputs from '../amplify_outputs.json';
 
-  const renderTabIcon = (name: string, focused: boolean, color: string, size: number, badge?: number) => {
-    return (
-      <View style={{ position: 'relative' }}>
-        <Ionicons name={name as any} size={size} color={color} />
-        {badge !== undefined && badge > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
-          </View>
-        )}
-      </View>
-    );
+// Configure Amplify OUTSIDE the component
+Amplify.configure(amplifyOutputs);
+console.log('✅ Amplify configured with User Pool:', amplifyOutputs.auth.user_pool_id);
+
+export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    const inAuthGroup = segments[0] === '(tabs)';
+    const inAuthScreens = segments[0] === 'signin' || segments[0] === 'signup';
+
+    if (!isAuthenticated && inAuthGroup) {
+      // User is in tabs but not authenticated, redirect to signin
+      router.replace('/signin');
+    } else if (isAuthenticated && inAuthScreens) {
+      // User is authenticated but on auth screens, redirect to tabs
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, segments, isReady]);
+
+  const checkAuth = async () => {
+    try {
+      await getCurrentUser();
+      setIsAuthenticated(true);
+    } catch {
+      setIsAuthenticated(false);
+    } finally {
+      setIsReady(true);
+    }
   };
 
+  if (!isReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
+    );
+  }
+
   return (
-    <Tabs
+    <Stack
       screenOptions={{
-        tabBarActiveTintColor: '#4CAF50',
-        tabBarInactiveTintColor: 'gray',
+        headerShown: false,
+        animation: 'slide_from_right',
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Map',
-          headerTitle: 'LocationLink',
-          tabBarIcon: ({ color, size, focused }) =>
-            renderTabIcon(focused ? 'map' : 'map-outline', focused, color, size, friendsOnline),
-        }}
-      />
-      <Tabs.Screen
-        name="friends"
-        options={{
-          title: 'Friends',
-          headerTitle: 'My Friends',
-          tabBarIcon: ({ color, size, focused }) =>
-            renderTabIcon(focused ? 'people' : 'people-outline', focused, color, size),
-        }}
-      />
-      <Tabs.Screen
-        name="requests"
-        options={{
-          title: 'Requests',
-          headerTitle: 'Friend Requests',
-          tabBarIcon: ({ color, size, focused }) =>
-            renderTabIcon(focused ? 'person-add' : 'person-add-outline', focused, color, size, pendingRequests.length),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          headerTitle: 'My Profile',
-          tabBarIcon: ({ color, size, focused }) =>
-            renderTabIcon(focused ? 'person' : 'person-outline', focused, color, size),
-        }}
-      />
-    </Tabs>
+      {!isAuthenticated ? (
+        <>
+          {/* Auth screens - NO TABS */}
+          <Stack.Screen
+            name="signin"
+            options={{
+              title: 'Sign In',
+              headerShown: true,
+              headerBackVisible: false,
+            }}
+          />
+          <Stack.Screen
+            name="signup"
+            options={{
+              title: 'Sign Up',
+              headerShown: true,
+            }}
+          />
+        </>
+      ) : (
+        <>
+          {/* Main app with tabs */}
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false
+            }}
+          />
+        </>
+      )}
+    </Stack>
   );
 }
-
-const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    right: -8,
-    top: -3,
-    backgroundColor: '#FF6B6B',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-});
