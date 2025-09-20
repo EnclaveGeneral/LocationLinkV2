@@ -1,3 +1,6 @@
+// Developer Notes: Original React-Native navigation, no longer used but kept as a backup and future reference if needed.
+// Does not interact with the project in anyway, shape, or form
+
 // Required for Amplify
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
