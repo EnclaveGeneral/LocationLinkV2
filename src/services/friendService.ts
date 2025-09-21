@@ -70,9 +70,9 @@ export const friendService = {
       senderId: currentUser.userId,
       receiverId: receiverId,
       status: 'PENDING',
-      senderUsername: currentUserData?.username || 'User',
-      receiverUsername: receiverProfile.username || 'User', // Handle potential null
-      owners: [currentUser.userId, receiverId], // Both can access
+      senderUsername: currentUserData?.username || 'Unknown',
+      receiverUsername: receiverProfile.username || 'Unknown', // Handle potential null
+      // owners: [currentUser.userId, receiverId], This Line Due To Gen 2 is now implicit.
     });
 
     return request;
@@ -97,8 +97,8 @@ export const friendService = {
       request.senderId,
       request.receiverId,
       request.senderUsername || undefined,
-      request.receiverUsername || undefined,
-      [request.senderId, request.receiverId] // Both users own this record
+      request.receiverUsername || undefined
+      // [request.senderId, request.receiverId] // Both users own this record, created implicitly
     );
 
     // CRITICAL: Update viewers arrays so friends can see each other's locations

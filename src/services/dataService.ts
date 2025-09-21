@@ -134,9 +134,9 @@ export const dataService = {
         userId,
         friendId,
         userUsername,
-        friendUsername,
+        friendUsername
         // Type assertion to handle TypeScript type issues
-        owners: owners || [userId, friendId] as any
+        // owners: owners || [userId, friendId] as an implicit field.
       });
       if (errors) {
         console.error('Create friend errors:', errors);
@@ -180,9 +180,9 @@ export const dataService = {
   async createFriendRequest(requestData: any) {
     try {
       const { data, errors } = await client.models.FriendRequest.create({
-        ...requestData,
+        ...requestData
         // Type assertion to handle TypeScript type issues
-        owners: (requestData.owners || [requestData.senderId, requestData.receiverId]) as any
+        // owners: (requestData.owners || [requestData.senderId, requestData.receiverId]) as any, field implicit.
       });
       if (errors) {
         console.error('Create friend request errors:', errors);
