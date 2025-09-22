@@ -1,17 +1,18 @@
 // amplify/functions/accept-friend-request/handler.ts
 import type { Schema } from '../../data/resource';
+import type { AppSyncResolverHandler, AppSyncIdentityCognito } from 'aws-lambda';
 
 type Handler = Schema['acceptFriendRequestLambda']['functionHandler'];
 
 export const handler: Handler = async (event) => {
+
+  // Narrow the type
   const { requestId } = event.arguments;
-  const userId = event.identity?.sub;
+  const identity = event.identity as AppSyncIdentityCognito | undefined;
+  const userId = identity?.sub;
 
   if (!userId) {
-    return {
-      success: false,
-      message: 'Not authenticated',
-    };
+    return { success: false, message: 'Missing userId'};
   }
 
   // We'll use AWS SDK v3 directly to access DynamoDB
