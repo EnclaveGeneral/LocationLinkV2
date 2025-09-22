@@ -1,10 +1,10 @@
 // amplify/functions/accept-friend-request/handler.ts
 import type { Schema } from '../../data/resource';
-import type { AppSyncResolverHandler, AppSyncIdentityCognito } from 'aws-lambda';
+import type { AppSyncIdentityCognito } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
-type Handler = Schema['acceptFriendRequestLambda']['functionHandler'];
-
-export const handler: Handler = async (event) => {
+export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = async (event) => {
 
   // Narrow the type
   const { requestId } = event.arguments;
@@ -17,8 +17,6 @@ export const handler: Handler = async (event) => {
 
   // We'll use AWS SDK v3 directly to access DynamoDB
   // This is included in Lambda runtime, no install needed!
-  const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-  const { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);

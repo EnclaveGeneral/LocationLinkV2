@@ -1,10 +1,10 @@
 // amplify/functions/remove-friend/handler.ts
 import type { Schema } from '../../data/resource';
-import type { AppSyncResolverHandler, AppSyncIdentityCognito } from 'aws-lambda';
+import type { AppSyncIdentityCognito } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-type Handler = Schema['removeFriendLambda']['functionHandler'];
-
-export const handler: Handler = async (event) => {
+export const handler: Schema['removeFriendLambda']['functionHandler'] = async (event) => {
 
   // Narrow the type
   const { friendId } = event.arguments;
@@ -14,9 +14,6 @@ export const handler: Handler = async (event) => {
   if (!userId || !friendId) {
     return {success: false, message: 'Missing userId or friendId'};
   }
-
-  const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-  const { DynamoDBDocumentClient, GetCommand, UpdateCommand, DeleteCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);

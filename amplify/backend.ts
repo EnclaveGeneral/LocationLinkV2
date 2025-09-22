@@ -2,8 +2,8 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
-import { acceptFriendRequestFunction } from './functions/accept-friend-request/resource';
-import { removeFriendFunction } from './functions/remove-friend/resource';
+import { acceptFriendRequestFunction } from '../amplify/functions/accept-friend-request/resource';
+import { removeFriendFunction } from '../amplify/functions/remove-friend/resource';
 import { Stack } from 'aws-cdk-lib';
 // Grant DynamoDB permissions using IAM policies
 import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
