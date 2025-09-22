@@ -82,7 +82,7 @@ export default function MapScreen() {
       // Populate map with location-sharing friends
       const friendsMap = new Map();
       friendsList.forEach(friend => {
-        if (friend.isLocationSharing && friend.latitude && friend.longitude) {
+        if (friend?.isLocationSharing && friend.latitude && friend.longitude) {
           friendsMap.set(friend.id, friend);
         }
       });

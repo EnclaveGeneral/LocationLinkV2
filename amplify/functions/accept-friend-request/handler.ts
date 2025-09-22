@@ -16,8 +16,8 @@ export const handler: Handler = async (event) => {
 
   // We'll use AWS SDK v3 directly to access DynamoDB
   // This is included in Lambda runtime, no install needed!
-  const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
-  const { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
+  const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+  const { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);

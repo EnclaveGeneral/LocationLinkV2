@@ -4,6 +4,7 @@ import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { acceptFriendRequestFunction } from './functions/accept-friend-request/resource';
 import { removeFriendFunction } from './functions/remove-friend/resource';
+import { Stack } from 'aws-cdk-lib';
 
 const backend = defineBackend({
   auth,
@@ -12,37 +13,78 @@ const backend = defineBackend({
   removeFriendFunction,
 });
 
-// Get the underlying CDK resources
-const { cfnResources } = backend.data.resources;
-const tables = backend.data.resources.tables;
+// Get the stack and resources
+const stack = Stack.of(backend.data);
+
+// Method 1: Get table names directly from the GraphQL schema
+const userTableName = backend.data.resources.cfnResources.cfnTables['User'].tableName;
+const friendTableName = backend.data.resources.cfnResources.cfnTables['Friend'].tableName;
+const friendRequestTableName = backend.data.resources.cfnResources.cfnTables['FriendRequest'].tableName;
 
 // Add environment variables to the Lambda functions
-backend.acceptFriendRequestFunction.resources.lambda.addEnvironment(
+backend.acceptFriendRequestFunction.addEnvironment(
   'USER_TABLE_NAME',
-  tables['User'].tableName
+  userTableName!
 );
-backend.acceptFriendRequestFunction.resources.lambda.addEnvironment(
+backend.acceptFriendRequestFunction.addEnvironment(
   'FRIEND_REQUEST_TABLE_NAME',
-  tables['FriendRequest'].tableName
+  friendRequestTableName!
 );
-backend.acceptFriendRequestFunction.resources.lambda.addEnvironment(
+backend.acceptFriendRequestFunction.addEnvironment(
   'FRIEND_TABLE_NAME',
-  tables['Friend'].tableName
+  friendTableName!
 );
 
-backend.removeFriendFunction.resources.lambda.addEnvironment(
+backend.removeFriendFunction.addEnvironment(
   'USER_TABLE_NAME',
-  tables['User'].tableName
+  userTableName!
 );
-backend.removeFriendFunction.resources.lambda.addEnvironment(
+backend.removeFriendFunction.addEnvironment(
   'FRIEND_TABLE_NAME',
-  tables['Friend'].tableName
+  friendTableName!
 );
 
-// Grant DynamoDB permissions to the Lambda functions
-tables['User'].grantReadWriteData(backend.acceptFriendRequestFunction.resources.lambda);
-tables['FriendRequest'].grantReadWriteData(backend.acceptFriendRequestFunction.resources.lambda);
-tables['Friend'].grantReadWriteData(backend.acceptFriendRequestFunction.resources.lambda);
+// Grant DynamoDB permissions using IAM policies
+import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 
-tables['User'].grantReadWriteData(backend.removeFriendFunction.resources.lambda);
-tables['Friend'].grantReadWriteData(backend.removeFriendFunction.resources.lambda);
+// Grant permissions for accept-friend-request function
+backend.acceptFriendRequestFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      'dynamodb:GetItem',
+      'dynamodb:PutItem',
+      'dynamodb:UpdateItem',
+      'dynamodb:DeleteItem',
+      'dynamodb:Query',
+      'dynamodb:Scan',
+    ],
+    resources: [
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}/*`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}/*`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendRequestTableName}`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendRequestTableName}/*`
+    ],
+  })
+);
+
+backend.removeFriendFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      'dynamodb:GetItem',
+      'dynamodb:UpdateItem',
+      'dynamodb:DeleteItem',
+      'dynamodb:Query',
+      'dynamodb:Scan',
+    ],
+    resources: [
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}/*`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}`,
+      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}/*`,
+    ],
+  })
+);
