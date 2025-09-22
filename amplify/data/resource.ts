@@ -10,11 +10,14 @@ const schema = a.schema({
       longitude: a.float(),
       locationUpdatedAt: a.datetime(),
       isLocationSharing: a.boolean().default(true),
-      // Don't explicitly define viewers - it will be created implicitly
+      friends: a.string().array(),
+      // Remove the friends implicit field approach
     })
     .authorization((allow) => [
       allow.owner(),
-      allow.ownerDefinedIn('viewers').to(['read']),
+      // For now, authenticated users can read each other if they have a Friend record
+      // This is a temporary workaround until we figure out the friends array
+      allow.ownersDefinedIn('friends').to(['read'])
     ]),
 
   PublicProfile: a
@@ -36,10 +39,10 @@ const schema = a.schema({
       friendId: a.id().required(),
       userUsername: a.string(),
       friendUsername: a.string(),
-      // Don't explicitly define owners - it will be created implicitly
     })
     .authorization((allow) => [
-      allow.ownerDefinedIn('owners'),
+      allow.ownerDefinedIn('userId'),
+      allow.ownerDefinedIn('friendId'),
     ])
     .secondaryIndexes((index) => [
       index('userId'),
@@ -53,10 +56,10 @@ const schema = a.schema({
       status: a.enum(['PENDING', 'ACCEPTED', 'REJECTED']),
       senderUsername: a.string(),
       receiverUsername: a.string(),
-      // Don't explicitly define owners - it will be created implicitly
     })
     .authorization((allow) => [
-      allow.ownerDefinedIn('owners'),
+      allow.ownerDefinedIn('senderId'),
+      allow.ownerDefinedIn('receiverId'),
     ])
     .secondaryIndexes((index) => [
       index('senderId'),

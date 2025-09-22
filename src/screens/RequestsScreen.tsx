@@ -1,4 +1,4 @@
-// src/screens/RequestsScreen.tsx
+// src/screens/RequestsScreen.tsx - Updated setupSubscriptions
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -50,81 +50,37 @@ export default function RequestsScreen() {
 
   const setupSubscriptions = (userId: string) => {
     try {
-      // Subscribe to incoming friend requests
-      const incomingSub = client.models.FriendRequest.observeQuery({
-        filter: {
-          and: [
-            { receiverId: { eq: userId } },
-            { status: { eq: 'PENDING' } }
-          ]
-        }
-      }).subscribe({
+      // FIXED: Single subscription with NO filter, then filter on client side
+      const sub = client.models.FriendRequest.observeQuery().subscribe({
         next: ({ items }) => {
-          setPendingRequests(items);
-
-          // Show notification if there are new requests
-          if (items.length > pendingRequests.length) {
-            // You could add a local notification here
-            console.log('New friend request received!');
-          }
-        },
-        error: (error) => {
-          console.error('Error in incoming requests subscription:', error);
-        }
-      });
-
-      // Subscribe to sent friend requests
-      const sentSub = client.models.FriendRequest.observeQuery({
-        filter: {
-          and: [
-            { senderId: { eq: userId } },
-            { status: { eq: 'PENDING' } }
-          ]
-        }
-      }).subscribe({
-        next: ({ items }) => {
-          setSentRequests(items);
-        },
-        error: (error) => {
-          console.error('Error in sent requests subscription:', error);
-        }
-      });
-
-      // Subscribe to status changes (for when sent requests get accepted/rejected)
-      const statusSub = client.models.FriendRequest.observeQuery({
-        filter: {
-          or: [
-            { senderId: { eq: userId } },
-            { receiverId: { eq: userId } }
-          ]
-        }
-      }).subscribe({
-        next: async ({ items }) => {
-          // Filter for pending requests only
-          const pending = items.filter(req =>
-            req.status === 'PENDING' && req.receiverId === userId
+          // Filter on client side for this user's requests
+          const incoming = items.filter(item =>
+            item.receiverId === userId && item.status === 'PENDING'
           );
-          const sent = items.filter(req =>
-            req.status === 'PENDING' && req.senderId === userId
+          const sent = items.filter(item =>
+            item.senderId === userId && item.status === 'PENDING'
           );
 
-          setPendingRequests(pending);
+          setPendingRequests(incoming);
           setSentRequests(sent);
 
-          // Check for accepted requests to show notification
+          // Check for accepted requests from sent items
           const accepted = items.find(req =>
-            req.status === 'ACCEPTED' && req.senderId === userId
+            req.senderId === userId && req.status === 'ACCEPTED'
           );
           if (accepted) {
             Alert.alert('Request Accepted!', `${accepted.receiverUsername} accepted your friend request!`);
           }
         },
         error: (error) => {
-          console.error('Error in status subscription:', error);
+          console.error('Friend requests subscription error:', error);
+          if (error?.error?.errors) {
+            console.error('Detailed error:', JSON.stringify(error.error.errors, null, 2));
+          }
         }
       });
 
-      subscriptionsRef.current.push(incomingSub, sentSub, statusSub);
+      subscriptionsRef.current.push(sub);
     } catch (error) {
       console.error('Error setting up subscriptions:', error);
     }

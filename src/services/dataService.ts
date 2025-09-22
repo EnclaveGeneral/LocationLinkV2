@@ -5,9 +5,14 @@ export const dataService = {
   // User operations
   async createUser(userData: any) {
     try {
-      // Don't pass viewers explicitly - it's created implicitly by Amplify
-      const { viewers, ...userDataWithoutViewers } = userData;
-      const { data, errors } = await client.models.User.create(userDataWithoutViewers);
+      // Initialize with empty friends array if not provided
+      const userDataWithDefaults = {
+        ...userData,
+        friends: userData.friends || []
+      };
+
+      const { data, errors } = await client.models.User.create(userDataWithDefaults);
+
       if (errors) {
         console.error('Create user errors:', errors);
         throw new Error('Failed to create user');
@@ -35,6 +40,7 @@ export const dataService = {
   async updateUser(id: string, updates: any) {
     try {
       const { data, errors } = await client.models.User.update({ id, ...updates });
+
       if (errors) {
         console.error('Update user errors:', errors);
         throw new Error('Failed to update user');
@@ -106,8 +112,10 @@ export const dataService = {
 
   async updatePublicProfile(userId: string, updates: any) {
     try {
-      // First get the profile
-      const profiles = await this.searchPublicProfiles(userId);
+      const { data: profiles } = await client.models.PublicProfile.list({
+        filter: { userId: { eq: userId } }
+      });
+
       if (!profiles || profiles.length === 0) {
         throw new Error('Public profile not found');
       }
@@ -127,21 +135,23 @@ export const dataService = {
     }
   },
 
-  // Friend operations
-  async createFriend(userId: string, friendId: string, userUsername?: string, friendUsername?: string, owners?: string[]) {
+  // Friend operations - Simple, no owner handling needed!
+  async createFriend(userId: string, friendId: string, userUsername?: string, friendUsername?: string) {
     try {
       const { data, errors } = await client.models.Friend.create({
         userId,
         friendId,
         userUsername,
         friendUsername
-        // Type assertion to handle TypeScript type issues
-        // owners: owners || [userId, friendId] as an implicit field.
+        // No owners field needed - userId and friendId ARE the owners!
       });
+
       if (errors) {
         console.error('Create friend errors:', errors);
         throw new Error('Failed to create friend');
       }
+
+      console.log('Friend relationship created');
       return data;
     } catch (error) {
       console.error('Create friend error:', error);
@@ -176,18 +186,24 @@ export const dataService = {
     }
   },
 
-  // Friend Request operations
+  // Friend Request operations - Simple, no owner handling needed!
   async createFriendRequest(requestData: any) {
     try {
       const { data, errors } = await client.models.FriendRequest.create({
-        ...requestData
-        // Type assertion to handle TypeScript type issues
-        // owners: (requestData.owners || [requestData.senderId, requestData.receiverId]) as any, field implicit.
+        senderId: requestData.senderId,
+        receiverId: requestData.receiverId,
+        status: requestData.status || 'PENDING',
+        senderUsername: requestData.senderUsername,
+        receiverUsername: requestData.receiverUsername
+        // No owners field needed - senderId and receiverId ARE the owners!
       });
+
       if (errors) {
         console.error('Create friend request errors:', errors);
         throw new Error('Failed to create friend request');
       }
+
+      console.log('Friend request created successfully');
       return data;
     } catch (error) {
       console.error('Create friend request error:', error);
@@ -195,10 +211,13 @@ export const dataService = {
     }
   },
 
-
   async updateFriendRequest(id: string, updates: any) {
     try {
-      const { data, errors } = await client.models.FriendRequest.update({ id, ...updates });
+      const { data, errors } = await client.models.FriendRequest.update({
+        id,
+        ...updates
+      });
+
       if (errors) {
         console.error('Update friend request errors:', errors);
         throw new Error('Failed to update friend request');

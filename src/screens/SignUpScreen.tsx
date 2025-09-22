@@ -50,13 +50,16 @@ export default function SignUpScreen() {
       // Get current user
       const user = await authService.getCurrentUser();
       if (user) {
+        // Create user with empty friends array
         await dataService.createUser({
           id: user.userId,
           username: username,
           email: email,
           isLocationSharing: true,
+          friends: [] // Initialize empty friends array
         });
 
+        // Create public profile for user discovery
         await dataService.createPublicProfile({
           userId: user.userId,
           username: username,

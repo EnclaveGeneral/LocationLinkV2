@@ -1,11 +1,11 @@
 // src/services/subscriptionService.ts
 import { client } from './amplifyConfig';
-import { authService } from './authService';
 
 export class SubscriptionService {
   private static instance: SubscriptionService;
   private subscriptions: any[] = [];
-  private callbacks: Map<string, Function[]> = new Map();
+  private friendCache = new Map<string, any>();
+  private friendRequestCache = new Map<string, any>();
 
   static getInstance(): SubscriptionService {
     if (!SubscriptionService.instance) {
@@ -14,10 +14,9 @@ export class SubscriptionService {
     return SubscriptionService.instance;
   }
 
-  // Subscribe to friend location updates
+  // Subscribe to friend location updates - Keep as is (individual subscriptions)
   async subscribeFriendLocations(friendIds: string[], onUpdate: (friend: any) => void) {
     try {
-      // Subscribe to each friend's User record updates
       for (const friendId of friendIds) {
         const sub = client.models.User.observeQuery({
           filter: { id: { eq: friendId } }
@@ -39,36 +38,41 @@ export class SubscriptionService {
     }
   }
 
-  // Subscribe to new friendships being created
+  // Subscribe to new friendships - NO FILTERS
   async subscribeNewFriendships(userId: string, onNewFriend: (friend: any) => void) {
     try {
-      // Subscribe to Friend model for new friendships
-      const sub = client.models.Friend.observeQuery({
-        filter: {
-          or: [
-            { userId: { eq: userId } },
-            { friendId: { eq: userId } }
-          ]
-        }
-      }).subscribe({
+      const processedFriends = new Set<string>();
+
+      // Subscribe to ALL Friend changes (no filter)
+      const sub = client.models.Friend.observeQuery().subscribe({
         next: async ({ items }) => {
-          // Process new friendships
-          for (const friendship of items) {
+          // Filter on client side for friendships involving this user
+          const relevantFriendships = items.filter(friendship =>
+            friendship.userId === userId || friendship.friendId === userId
+          );
+
+          for (const friendship of relevantFriendships) {
             const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
 
-            // Fetch the friend's user data
+            if (processedFriends.has(friendId)) continue;
+            processedFriends.add(friendId);
+
             try {
               const friendData = await client.models.User.get({ id: friendId });
               if (friendData.data) {
                 onNewFriend(friendData.data);
               }
             } catch (error) {
-              console.error('Error fetching new friend data:', error);
+              console.error('Error fetching friend data:', error);
             }
           }
         },
         error: (error) => {
           console.error('New friendship subscription error:', error);
+          // Log more details
+          if (error?.error?.errors) {
+            console.error('Detailed error:', JSON.stringify(error.error.errors, null, 2));
+          }
         }
       });
 
@@ -78,65 +82,50 @@ export class SubscriptionService {
     }
   }
 
-  // Subscribe to friend requests
+  // Subscribe to friend requests - NO FILTERS
   async subscribeFriendRequests(userId: string, onUpdate: (requests: any[]) => void) {
     try {
-      // Subscribe to incoming requests
-      const incomingSub = client.models.FriendRequest.observeQuery({
-        filter: {
-          and: [
-            { receiverId: { eq: userId } },
-            { status: { eq: 'PENDING' } }
-          ]
-        }
-      }).subscribe({
+      // Subscribe to ALL FriendRequest changes (no filter)
+      const sub = client.models.FriendRequest.observeQuery().subscribe({
         next: ({ items }) => {
-          onUpdate(items);
+          // Filter on client side for pending requests involving this user
+          const pendingRequests = items.filter(item =>
+            item.status === 'PENDING' &&
+            (item.senderId === userId || item.receiverId === userId)
+          );
+          onUpdate(pendingRequests);
         },
         error: (error) => {
-          console.error('Incoming requests subscription error:', error);
+          console.error('Friend requests subscription error:', error);
+          if (error?.error?.errors) {
+            console.error('Detailed error:', JSON.stringify(error.error.errors, null, 2));
+          }
         }
       });
 
-      // Subscribe to sent requests
-      const sentSub = client.models.FriendRequest.observeQuery({
-        filter: {
-          and: [
-            { senderId: { eq: userId } },
-            { status: { eq: 'PENDING' } }
-          ]
-        }
-      }).subscribe({
-        next: ({ items }) => {
-          onUpdate(items);
-        },
-        error: (error) => {
-          console.error('Sent requests subscription error:', error);
-        }
-      });
-
-      this.subscriptions.push(incomingSub, sentSub);
+      this.subscriptions.push(sub);
     } catch (error) {
       console.error('Error setting up friend request subscriptions:', error);
     }
   }
 
-  // Subscribe to friendships
+  // Subscribe to friendships - NO FILTERS
   async subscribeFriendships(userId: string, onUpdate: (friends: any[]) => void) {
     try {
-      const sub = client.models.Friend.observeQuery({
-        filter: {
-          or: [
-            { userId: { eq: userId } },
-            { friendId: { eq: userId } }
-          ]
-        }
-      }).subscribe({
+      // Subscribe to ALL Friend changes (no filter)
+      const sub = client.models.Friend.observeQuery().subscribe({
         next: ({ items }) => {
-          onUpdate(items);
+          // Filter on client side for friendships involving this user
+          const userFriendships = items.filter(item =>
+            item.userId === userId || item.friendId === userId
+          );
+          onUpdate(userFriendships);
         },
         error: (error) => {
           console.error('Friendships subscription error:', error);
+          if (error?.error?.errors) {
+            console.error('Detailed error:', JSON.stringify(error.error.errors, null, 2));
+          }
         }
       });
 
@@ -146,7 +135,7 @@ export class SubscriptionService {
     }
   }
 
-  // Subscribe to user's own location sharing status
+  // Subscribe to user's own settings - Keep as is
   async subscribeUserSettings(userId: string, onUpdate: (user: any) => void) {
     try {
       const sub = client.models.User.observeQuery({
@@ -176,6 +165,7 @@ export class SubscriptionService {
       }
     });
     this.subscriptions = [];
-    this.callbacks.clear();
+    this.friendCache.clear();
+    this.friendRequestCache.clear();
   }
 }

@@ -7,7 +7,7 @@ export const friendService = {
     const currentUser = await authService.getCurrentUser();
     if (!currentUser) throw new Error('Not authenticated');
 
-    // UPDATED: Search in PublicProfile instead of User
+    // Search in PublicProfile
     const profiles = await dataService.searchPublicProfiles(receiverUsername);
 
     if (!profiles || profiles.length === 0) {
@@ -65,14 +65,13 @@ export const friendService = {
     // Get current user's data
     const currentUserData = await dataService.getUser(currentUser.userId);
 
-    // IMPORTANT: Create request with owners array
+    // Create request
     const request = await dataService.createFriendRequest({
       senderId: currentUser.userId,
       receiverId: receiverId,
       status: 'PENDING',
       senderUsername: currentUserData?.username || 'Unknown',
-      receiverUsername: receiverProfile.username || 'Unknown', // Handle potential null
-      // owners: [currentUser.userId, receiverId], This Line Due To Gen 2 is now implicit.
+      receiverUsername: receiverProfile.username || 'Unknown',
     });
 
     return request;
@@ -92,17 +91,19 @@ export const friendService = {
       status: 'ACCEPTED',
     });
 
-    // IMPORTANT: Create friendship with owners array
+    // Create friendship record
     await dataService.createFriend(
       request.senderId,
       request.receiverId,
       request.senderUsername || undefined,
       request.receiverUsername || undefined
-      // [request.senderId, request.receiverId] // Both users own this record, created implicitly
     );
 
-    // CRITICAL: Update viewers arrays so friends can see each other's locations
-    await this.updateViewersArrays(request.senderId, request.receiverId, 'add');
+    // Update friends arrays in both users
+    await this.updateFriendsArrays(request.senderId, request.receiverId, 'add');
+
+    // Optionally delete the request after acceptance
+    await dataService.deleteFriendRequest(requestId);
 
     return true;
   },
@@ -122,16 +123,15 @@ export const friendService = {
 
     if (friends.length > 0) {
       await dataService.deleteFriend(friends[0].id);
-
-      // CRITICAL: Remove from viewers arrays
-      await this.updateViewersArrays(currentUserId, friendId, 'remove');
+      // Remove from friends arrays
+      await this.updateFriendsArrays(currentUserId, friendId, 'remove');
     }
 
     return true;
   },
 
-  // Helper function to manage viewers arrays
-  async updateViewersArrays(userId1: string, userId2: string, action: 'add' | 'remove') {
+  // Helper function to manage friends arrays
+  async updateFriendsArrays(userId1: string, userId2: string, action: 'add' | 'remove') {
     try {
       const [user1, user2] = await Promise.all([
         dataService.getUser(userId1),
@@ -139,48 +139,37 @@ export const friendService = {
       ]);
 
       if (user1 && user2) {
-        // Handle potential type issues with type assertions
-        let user1Viewers = (user1.viewers as any as string[]) || [];
-        let user2Viewers = (user2.viewers as any as string[]) || [];
-
-        // Ensure we're working with arrays
-        if (!Array.isArray(user1Viewers)) {
-          console.warn('user1.viewers is not an array, converting:', user1Viewers);
-          user1Viewers = [];
-        }
-        if (!Array.isArray(user2Viewers)) {
-          console.warn('user2.viewers is not an array, converting:', user2Viewers);
-          user2Viewers = [];
-        }
+        // Work with explicit friends arrays
+        let user1Friends = user1.friends || [];
+        let user2Friends = user2.friends || [];
 
         if (action === 'add') {
-          // Add each user to the other's viewers
-          if (!user1Viewers.includes(userId2)) {
-            user1Viewers.push(userId2);
+          // Add each user to the other's friends array
+          if (!user1Friends.includes(userId2)) {
+            user1Friends = [...user1Friends, userId2];
           }
-          if (!user2Viewers.includes(userId1)) {
-            user2Viewers.push(userId1);
+          if (!user2Friends.includes(userId1)) {
+            user2Friends = [...user2Friends, userId1];
           }
         } else {
-          // Remove each user from the other's viewers
-          user1Viewers = user1Viewers.filter(id => id !== userId2);
-          user2Viewers = user2Viewers.filter(id => id !== userId1);
+          // Remove each user from the other's friends array
+          user1Friends = user1Friends.filter((id: string) => id !== userId2);
+          user2Friends = user2Friends.filter((id: string) => id !== userId1);
         }
 
-        // Update both users - use type assertion
+        // Update both users
         await Promise.all([
-          dataService.updateUser(userId1, { viewers: user1Viewers as any }),
-          dataService.updateUser(userId2, { viewers: user2Viewers as any })
+          dataService.updateUser(userId1, { friends: user1Friends }),
+          dataService.updateUser(userId2, { friends: user2Friends })
         ]);
 
-        console.log(`Updated viewers arrays - ${action} relationship between ${userId1} and ${userId2}`);
+        console.log(`Updated friends arrays - ${action} relationship between users`);
       }
     } catch (error) {
-      console.error('Error updating viewers arrays:', error);
+      console.error('Error updating friends arrays:', error);
       throw error;
     }
   },
-
 
   async getFriends(userId: string) {
     const friendships = await dataService.listFriends({

@@ -87,6 +87,14 @@
               "isRequired": false,
               "attributes": []
             },
+            "friends": {
+              "name": "friends",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
@@ -129,7 +137,7 @@
                   },
                   {
                     "provider": "userPools",
-                    "ownerField": "viewers",
+                    "ownerField": "friends",
                     "allow": "owner",
                     "operations": [
                       "read"
@@ -324,7 +332,19 @@
                 "rules": [
                   {
                     "provider": "userPools",
-                    "ownerField": "owners",
+                    "ownerField": "userId",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "provider": "userPools",
+                    "ownerField": "friendId",
                     "allow": "owner",
                     "identityClaim": "cognito:username",
                     "operations": [
@@ -441,7 +461,19 @@
                 "rules": [
                   {
                     "provider": "userPools",
-                    "ownerField": "owners",
+                    "ownerField": "senderId",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "provider": "userPools",
+                    "ownerField": "receiverId",
                     "allow": "owner",
                     "identityClaim": "cognito:username",
                     "operations": [

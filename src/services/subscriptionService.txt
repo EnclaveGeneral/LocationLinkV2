@@ -1,0 +1,215 @@
+Due to AWS AppSync filter parameter limitation, this subscription with server side filtering
+is no longer functioning.
+
+
+// src/services/subscriptionService.ts No Longer works
+import { client } from './amplifyConfig';
+
+export class SubscriptionService {
+  private static instance: SubscriptionService;
+  private subscriptions: any[] = [];
+
+  static getInstance(): SubscriptionService {
+    if (!SubscriptionService.instance) {
+      SubscriptionService.instance = new SubscriptionService();
+    }
+    return SubscriptionService.instance;
+  }
+
+  // Subscribe to friend location updates
+  async subscribeFriendLocations(friendIds: string[], onUpdate: (friend: any) => void) {
+    try {
+      // Subscribe to each friend's User record updates individually
+      for (const friendId of friendIds) {
+        const sub = client.models.User.observeQuery({
+          filter: { id: { eq: friendId } }
+        }).subscribe({
+          next: ({ items }) => {
+            if (items.length > 0) {
+              onUpdate(items[0]);
+            }
+          },
+          error: (error) => {
+            console.error('Friend location subscription error:', error);
+          }
+        });
+
+        this.subscriptions.push(sub);
+      }
+    } catch (error) {
+      console.error('Error setting up friend location subscriptions:', error);
+    }
+  }
+
+  // Subscribe to new friendships - FIXED with observeQuery
+  async subscribeNewFriendships(userId: string, onNewFriend: (friend: any) => void) {
+    try {
+      const processedFriends = new Set<string>();
+
+      // Subscribe where user is userId
+      const subAsUser = client.models.Friend.observeQuery({
+        filter: { userId: { eq: userId } }
+      }).subscribe({
+        next: async ({ items }) => {
+          for (const friendship of items) {
+            const friendId = friendship.friendId;
+
+            if (processedFriends.has(friendId)) continue;
+            processedFriends.add(friendId);
+
+            try {
+              const friendData = await client.models.User.get({ id: friendId });
+              if (friendData.data) {
+                onNewFriend(friendData.data);
+              }
+            } catch (error) {
+              console.error('Error fetching friend data:', error);
+            }
+          }
+        },
+        error: (error) => {
+          console.error('New friendship subscription error (as user):', error);
+        }
+      });
+
+      // Subscribe where user is friendId
+      const subAsFriend = client.models.Friend.observeQuery({
+        filter: { friendId: { eq: userId } }
+      }).subscribe({
+        next: async ({ items }) => {
+          for (const friendship of items) {
+            const friendId = friendship.userId;
+
+            if (processedFriends.has(friendId)) continue;
+            processedFriends.add(friendId);
+
+            try {
+              const friendData = await client.models.User.get({ id: friendId });
+              if (friendData.data) {
+                onNewFriend(friendData.data);
+              }
+            } catch (error) {
+              console.error('Error fetching friend data:', error);
+            }
+          }
+        },
+        error: (error) => {
+          console.error('New friendship subscription error (as friend):', error);
+        }
+      });
+
+      this.subscriptions.push(subAsUser, subAsFriend);
+    } catch (error) {
+      console.error('Error setting up new friendship subscriptions:', error);
+    }
+  }
+
+  // Subscribe to friend requests - Using observeQuery
+  async subscribeFriendRequests(userId: string, onUpdate: (requests: any[]) => void) {
+    try {
+      // Subscribe to incoming requests
+      const incomingSub = client.models.FriendRequest.observeQuery({
+        filter: { receiverId: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          const pendingRequests = items.filter(item => item.status === 'PENDING');
+          onUpdate(pendingRequests);
+        },
+        error: (error) => {
+          console.error('Incoming requests subscription error:', error);
+        }
+      });
+
+      // Subscribe to sent requests
+      const sentSub = client.models.FriendRequest.observeQuery({
+        filter: { senderId: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          const pendingRequests = items.filter(item => item.status === 'PENDING');
+          onUpdate(pendingRequests);
+        },
+        error: (error) => {
+          console.error('Sent requests subscription error:', error);
+        }
+      });
+
+      this.subscriptions.push(incomingSub, sentSub);
+    } catch (error) {
+      console.error('Error setting up friend request subscriptions:', error);
+    }
+  }
+
+  // Subscribe to friendships - Using observeQuery
+  async subscribeFriendships(userId: string, onUpdate: (friends: any[]) => void) {
+    try {
+      const allFriendships = new Map<string, any>();
+
+      // Subscribe where user is userId
+      const subAsUser = client.models.Friend.observeQuery({
+        filter: { userId: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          // Clear and rebuild the map to avoid stale data
+          items.forEach(item => {
+            allFriendships.set(`user-${item.id}`, item);
+          });
+          onUpdate(Array.from(allFriendships.values()));
+        },
+        error: (error) => {
+          console.error('Friendships subscription error (as user):', error);
+        }
+      });
+
+      // Subscribe where user is friendId
+      const subAsFriend = client.models.Friend.observeQuery({
+        filter: { friendId: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          items.forEach(item => {
+            allFriendships.set(`friend-${item.id}`, item);
+          });
+          onUpdate(Array.from(allFriendships.values()));
+        },
+        error: (error) => {
+          console.error('Friendships subscription error (as friend):', error);
+        }
+      });
+
+      this.subscriptions.push(subAsUser, subAsFriend);
+    } catch (error) {
+      console.error('Error setting up friendship subscriptions:', error);
+    }
+  }
+
+  // Subscribe to user's own settings
+  async subscribeUserSettings(userId: string, onUpdate: (user: any) => void) {
+    try {
+      const sub = client.models.User.observeQuery({
+        filter: { id: { eq: userId } }
+      }).subscribe({
+        next: ({ items }) => {
+          if (items.length > 0) {
+            onUpdate(items[0]);
+          }
+        },
+        error: (error) => {
+          console.error('User settings subscription error:', error);
+        }
+      });
+
+      this.subscriptions.push(sub);
+    } catch (error) {
+      console.error('Error setting up user settings subscription:', error);
+    }
+  }
+
+  // Clean up all subscriptions
+  unsubscribeAll() {
+    this.subscriptions.forEach(sub => {
+      if (sub && typeof sub.unsubscribe === 'function') {
+        sub.unsubscribe();
+      }
+    });
+    this.subscriptions = [];
+  }
+}
