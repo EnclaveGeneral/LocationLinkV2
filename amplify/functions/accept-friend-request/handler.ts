@@ -1,3 +1,4 @@
+// amplify/functions/accept-friend-request/handler.ts
 import type { Schema } from '../../data/resource';
 
 type Handler = Schema['acceptFriendRequestLambda']['functionHandler'];

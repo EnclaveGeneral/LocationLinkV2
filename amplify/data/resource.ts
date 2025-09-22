@@ -1,8 +1,5 @@
 // amplify/data/resource.ts
-// Schema for the backend of LocationLink App
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
-import { acceptFriendRequestFunction } from '../functions/accept-friend-request/resource';
-import { removeFriendFunction } from '../functions/remove-friend/resource';
 
 const schema = a.schema({
   User: a
@@ -13,14 +10,12 @@ const schema = a.schema({
       longitude: a.float(),
       locationUpdatedAt: a.datetime(),
       isLocationSharing: a.boolean().default(true),
-      friends: a.string().array(),
-      // Remove the friends implicit field approach
+      friends: a.string().array(), // Keep for reference but NOT for authorization
     })
     .authorization((allow) => [
       allow.owner(),
-      // For now, authenticated users can read each other if they have a Friend record
-      // This is a temporary workaround until we figure out the friends array
-      allow.ownersDefinedIn('friends').to(['read'])
+      // Remove the ownerDefinedIn('friends') - it causes the sync issue!
+      // Instead, we'll check friendship via the Friend model
     ]),
 
   PublicProfile: a
@@ -68,34 +63,6 @@ const schema = a.schema({
       index('senderId'),
       index('receiverId'),
     ]),
-
-  acceptFriendRequestLambda: a
-    .mutation()
-    .arguments({
-      requestId: a.string().required(),
-    })
-    .returns(
-      a.customType({
-        success: a.boolean().required(),
-        message: a.string(),
-      })
-    )
-    .authorization((allow) => [allow.authenticated()])
-    .handler(a.handler.function(acceptFriendRequestFunction)),
-
-  removeFriendLambda: a
-    .mutation()
-    .arguments({
-      friendId: a.string().required(),
-    })
-    .returns(
-      a.customType({
-        success: a.boolean().required(),
-        message: a.string(),
-      })
-    )
-    .authorization((allow) => [allow.authenticated()])
-    .handler(a.handler.function(removeFriendFunction)),
 });
 
 export type Schema = ClientSchema<typeof schema>;

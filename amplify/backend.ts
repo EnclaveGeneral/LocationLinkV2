@@ -1,3 +1,4 @@
+// amplify/backend.ts
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -45,4 +46,3 @@ tables['Friend'].grantReadWriteData(backend.acceptFriendRequestFunction.resource
 
 tables['User'].grantReadWriteData(backend.removeFriendFunction.resources.lambda);
 tables['Friend'].grantReadWriteData(backend.removeFriendFunction.resources.lambda);
-

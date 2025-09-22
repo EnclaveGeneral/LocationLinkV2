@@ -4,6 +4,7 @@ import { dataService } from './dataService';
 import { client } from './amplifyConfig';
 
 export const friendService = {
+  // Keep your existing sendFriendRequest method as is
   async sendFriendRequest(receiverUsername: string) {
     const currentUser = await authService.getCurrentUser();
     if (!currentUser) throw new Error('Not authenticated');
@@ -78,10 +79,10 @@ export const friendService = {
     return request;
   },
 
+  // UPDATED: Use Lambda function for accepting friend requests
   async acceptFriendRequest(requestId: string) {
     try {
-
-      //Call the Lambda mutation
+      // Call the Lambda mutation
       const { data, errors } = await client.mutations.acceptFriendRequestLambda({
         requestId: requestId,
       });
@@ -95,25 +96,23 @@ export const friendService = {
         throw new Error(data?.message || 'Failed to accept friend request');
       }
 
-      // After request accepted, delete the request.
       await dataService.deleteFriendRequest(requestId);
-
       return true;
     } catch (error: any) {
-      // After request failed, delete the request.
       await dataService.deleteFriendRequest(requestId);
       console.error('Error accepting friend request:', error);
       throw new Error(error.message || 'Failed to accept friend request');
     }
   },
 
+  // Keep rejectFriendRequest as is (just deletes the request)
   async rejectFriendRequest(requestId: string) {
     await dataService.deleteFriendRequest(requestId);
     return true;
   },
 
+  // UPDATED: Use Lambda function for removing friends
   async removeFriend(currentUserId: string, friendId: string) {
-
     try {
       // Call the Lambda mutation
       const { data, errors } = await client.mutations.removeFriendLambda({
@@ -136,47 +135,10 @@ export const friendService = {
     }
   },
 
-  // Helper function to manage friends arrays, no longer needed after Lambda functions
-  /* async updateFriendsArrays(userId1: string, userId2: string, action: 'add' | 'remove') {
-    try {
-      const [user1, user2] = await Promise.all([
-        dataService.getUser(userId1),
-        dataService.getUser(userId2)
-      ]);
+  // REMOVE the updateFriendsArrays method - no longer needed!
+  // Lambda handles this atomically now
 
-      if (user1 && user2) {
-        // Work with explicit friends arrays
-        let user1Friends = user1.friends || [];
-        let user2Friends = user2.friends || [];
-
-        if (action === 'add') {
-          // Add each user to the other's friends array
-          if (!user1Friends.includes(userId2)) {
-            user1Friends = [...user1Friends, userId2];
-          }
-          if (!user2Friends.includes(userId1)) {
-            user2Friends = [...user2Friends, userId1];
-          }
-        } else {
-          // Remove each user from the other's friends array
-          user1Friends = user1Friends.filter((id: string) => id !== userId2);
-          user2Friends = user2Friends.filter((id: string) => id !== userId1);
-        }
-
-        // Update both users
-        await Promise.all([
-          dataService.updateUser(userId1, { friends: user1Friends }),
-          dataService.updateUser(userId2, { friends: user2Friends })
-        ]);
-
-        console.log(`Updated friends arrays - ${action} relationship between users`);
-      }
-    } catch (error) {
-      console.error('Error updating friends arrays:', error);
-      throw error;
-    }
-  }, */
-
+  // Keep getFriends as is - it works fine
   async getFriends(userId: string) {
     const friendships = await dataService.listFriends({
       or: [
@@ -197,6 +159,7 @@ export const friendService = {
     return friends.filter(Boolean);
   },
 
+  // Keep the rest of your methods as they are
   async getPendingRequests(userId: string) {
     const requests = await dataService.listFriendRequests({
       and: [
