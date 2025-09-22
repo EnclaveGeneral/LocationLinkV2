@@ -1,5 +1,8 @@
 // amplify/data/resource.ts
+// Schema for the backend of LocationLink App
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { acceptFriendRequestFunction } from '../functions/accept-friend-request/resource';
+import { removeFriendFunction } from '../functions/remove-friend/resource';
 
 const schema = a.schema({
   User: a
@@ -65,6 +68,34 @@ const schema = a.schema({
       index('senderId'),
       index('receiverId'),
     ]),
+
+  acceptFriendRequestLambda: a
+    .mutation()
+    .arguments({
+      requestId: a.string().required(),
+    })
+    .returns(
+      a.customType({
+        success: a.boolean().required(),
+        message: a.string(),
+      })
+    )
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(acceptFriendRequestFunction)),
+
+  removeFriendLambda: a
+    .mutation()
+    .arguments({
+      friendId: a.string().required(),
+    })
+    .returns(
+      a.customType({
+        success: a.boolean().required(),
+        message: a.string(),
+      })
+    )
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(removeFriendFunction)),
 });
 
 export type Schema = ClientSchema<typeof schema>;

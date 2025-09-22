@@ -1,6 +1,7 @@
 // src/services/friendService.ts
 import { authService } from './authService';
 import { dataService } from './dataService';
+import { client } from './amplifyConfig';
 
 export const friendService = {
   async sendFriendRequest(receiverUsername: string) {
@@ -78,34 +79,32 @@ export const friendService = {
   },
 
   async acceptFriendRequest(requestId: string) {
-    // Get request details
-    const requests = await dataService.listFriendRequests({
-      id: { eq: requestId }
-    });
+    try {
 
-    const request = requests[0];
-    if (!request) throw new Error('Request not found');
+      //Call the Lambda mutation
+      const { data, errors } = await client.mutations.acceptFriendRequestLambda({
+        requestId: requestId,
+      });
 
-    // Update request status
-    await dataService.updateFriendRequest(requestId, {
-      status: 'ACCEPTED',
-    });
+      if (errors) {
+        console.error('Lambda errors:', errors);
+        throw new Error(errors[0]?.message || 'Failed to accept friend request');
+      }
 
-    // Create friendship record
-    await dataService.createFriend(
-      request.senderId,
-      request.receiverId,
-      request.senderUsername || undefined,
-      request.receiverUsername || undefined
-    );
+      if (!data?.success) {
+        throw new Error(data?.message || 'Failed to accept friend request');
+      }
 
-    // Update friends arrays in both users
-    await this.updateFriendsArrays(request.senderId, request.receiverId, 'add');
+      // After request accepted, delete the request.
+      await dataService.deleteFriendRequest(requestId);
 
-    // Optionally delete the request after acceptance
-    await dataService.deleteFriendRequest(requestId);
-
-    return true;
+      return true;
+    } catch (error: any) {
+      // After request failed, delete the request.
+      await dataService.deleteFriendRequest(requestId);
+      console.error('Error accepting friend request:', error);
+      throw new Error(error.message || 'Failed to accept friend request');
+    }
   },
 
   async rejectFriendRequest(requestId: string) {
@@ -114,24 +113,31 @@ export const friendService = {
   },
 
   async removeFriend(currentUserId: string, friendId: string) {
-    const friends = await dataService.listFriends({
-      or: [
-        { and: [{ userId: { eq: currentUserId } }, { friendId: { eq: friendId } }] },
-        { and: [{ userId: { eq: friendId } }, { friendId: { eq: currentUserId } }] },
-      ],
-    });
 
-    if (friends.length > 0) {
-      await dataService.deleteFriend(friends[0].id);
-      // Remove from friends arrays
-      await this.updateFriendsArrays(currentUserId, friendId, 'remove');
+    try {
+      // Call the Lambda mutation
+      const { data, errors } = await client.mutations.removeFriendLambda({
+        friendId: friendId,
+      });
+
+      if (errors) {
+        console.error('Lambda errors:', errors);
+        throw new Error(errors[0]?.message || 'Failed to remove friend');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.message || 'Failed to remove friend');
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error('Error removing friend:', error);
+      throw new Error(error.message || 'Failed to remove friend');
     }
-
-    return true;
   },
 
-  // Helper function to manage friends arrays
-  async updateFriendsArrays(userId1: string, userId2: string, action: 'add' | 'remove') {
+  // Helper function to manage friends arrays, no longer needed after Lambda functions
+  /* async updateFriendsArrays(userId1: string, userId2: string, action: 'add' | 'remove') {
     try {
       const [user1, user2] = await Promise.all([
         dataService.getUser(userId1),
@@ -169,7 +175,7 @@ export const friendService = {
       console.error('Error updating friends arrays:', error);
       throw error;
     }
-  },
+  }, */
 
   async getFriends(userId: string) {
     const friendships = await dataService.listFriends({
