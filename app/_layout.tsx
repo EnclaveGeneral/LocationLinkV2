@@ -1,15 +1,23 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { Amplify } from 'aws-amplify';
+// import Constants from 'expo-constants';
 import amplifyOutputs from '../amplify_outputs.json';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 
 Amplify.configure(amplifyOutputs);
 
 function RootNavigator() {
+
   const router = useRouter();
   const segments = useSegments();
   const { isAuthenticated, loading } = useAuth();
+
+  // Ensure the app has access to the right Google Map API Key
+  /* const googleMapKey =
+    Platform.OS == 'android'
+      ? Constants.expoConfig?.extra?.googleMapsKeyAndroid
+      : Constants.expoConfig?.extra?.googleMapsKeyIos */
 
   if (loading) {
     return (

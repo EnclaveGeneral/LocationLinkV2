@@ -1,3 +1,6 @@
+//app.config.js
+import 'dotenv/config';
+
 export default {
   expo: {
     name: "LocationLink",
@@ -50,6 +53,11 @@ export default {
           locationWhenInUsePermission: "Allow LocationLink to use your location to share with your friends."
         }
       ]
-    ]
+    ],
+    extra: {
+      "eas": {
+        "projectId": "376bbf5e-f8f8-4ebc-a0d7-dc231975f03a",
+      }
+    }
   }
 };
