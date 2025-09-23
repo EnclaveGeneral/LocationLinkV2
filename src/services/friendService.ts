@@ -96,10 +96,8 @@ export const friendService = {
         throw new Error(data?.message || 'Failed to accept friend request');
       }
 
-      await dataService.deleteFriendRequest(requestId);
       return true;
     } catch (error: any) {
-      await dataService.deleteFriendRequest(requestId);
       console.error('Error accepting friend request:', error);
       throw new Error(error.message || 'Failed to accept friend request');
     }

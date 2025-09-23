@@ -23,9 +23,15 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
 
   try {
     // Get table names from environment variables (Amplify provides these)
-    const userTable = process.env.USER_TABLE_NAME || 'User-[your-env-id]';
-    const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME || 'FriendRequest-[your-env-id]';
-    const friendTable = process.env.FRIEND_TABLE_NAME || 'Friend-[your-env-id]';
+    const userTable = process.env.USER_TABLE_NAME;
+    const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME;
+    const friendTable = process.env.FRIEND_TABLE_NAME;
+
+    if (!userTable || !friendRequestTable || !friendTable) {
+      throw new Error('Table name not configured');
+    }
+
+    console.log(`Accepting friend request ${requestId} for user ${userId}`);
 
     // 1. Get the friend request
     const requestResult = await ddbDocClient.send(new GetCommand({
@@ -115,6 +121,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
       TableName: friendRequestTable,
       Key: { id: requestId }
     }));
+
+    console.log(`Successfully accepted friend request ${requestId}`);
+    console.log(`Users ${request.senderId} and ${request.receiverId} are now friends`);
 
     return {
       success: true,
