@@ -4,4 +4,5 @@ export const removeFriendFunction = defineFunction({
   name: 'remove-friend',
   entry: './handler.ts',
   timeoutSeconds: 30,
+  resourceGroupName: 'data',
 });

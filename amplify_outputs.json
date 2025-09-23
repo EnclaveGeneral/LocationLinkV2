@@ -504,7 +504,80 @@
           ]
         }
       },
-      "nonModels": {}
+      "nonModels": {
+        "AcceptFriendRequestLambdaReturnType": {
+          "name": "AcceptFriendRequestLambdaReturnType",
+          "fields": {
+            "success": {
+              "name": "success",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "RemoveFriendLambdaReturnType": {
+          "name": "RemoveFriendLambdaReturnType",
+          "fields": {
+            "success": {
+              "name": "success",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        }
+      },
+      "mutations": {
+        "acceptFriendRequestLambda": {
+          "name": "acceptFriendRequestLambda",
+          "isArray": false,
+          "type": {
+            "nonModel": "AcceptFriendRequestLambdaReturnType"
+          },
+          "isRequired": false,
+          "arguments": {
+            "requestId": {
+              "name": "requestId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "removeFriendLambda": {
+          "name": "removeFriendLambda",
+          "isArray": false,
+          "type": {
+            "nonModel": "RemoveFriendLambdaReturnType"
+          },
+          "isRequired": false,
+          "arguments": {
+            "friendId": {
+              "name": "friendId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        }
+      }
     }
   },
   "version": "1.4"
