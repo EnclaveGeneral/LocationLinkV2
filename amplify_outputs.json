@@ -1,18 +1,20 @@
 {
   "auth": {
-    "user_pool_id": "us-west-2_vY2qp8mtf",
+    "user_pool_id": "us-west-2_sUhv14RaE",
     "aws_region": "us-west-2",
-    "user_pool_client_id": "436o7fn8q3imltod5jqqcni7mg",
-    "identity_pool_id": "us-west-2:1208c483-702b-4076-9cc5-d071b4efa748",
+    "user_pool_client_id": "h4o12iv25k6g97kk6miaqsn1e",
+    "identity_pool_id": "us-west-2:222d737c-052f-419b-85ea-549b170b7223",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email"
     ],
     "username_attributes": [
-      "email"
+      "email",
+      "phone_number"
     ],
     "user_verification_types": [
-      "email"
+      "email",
+      "phone_number"
     ],
     "groups": [],
     "mfa_configuration": "NONE",
@@ -26,7 +28,7 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://h5vvxoodqjd67ewrsftmilis6u.appsync-api.us-west-2.amazonaws.com/graphql",
+    "url": "https://kzwjuf3mbngybfzn5hlp5y5pau.appsync-api.us-west-2.amazonaws.com/graphql",
     "aws_region": "us-west-2",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
@@ -54,6 +56,13 @@
             },
             "email": {
               "name": "email",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "phoneNumber": {
+              "name": "phoneNumber",
               "isArray": false,
               "type": "String",
               "isRequired": true,
