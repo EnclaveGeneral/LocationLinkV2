@@ -39,12 +39,12 @@ function RootNavigator() {
           <Stack.Screen
             key="signin"
             name="signin"
-            options={{ title: 'Sign In', headerShown: true, headerBackVisible: false }}
+            options={{ title: 'Sign In', headerShown: false }}
           />,
           <Stack.Screen
             key="signup"
             name="signup"
-            options={{ title: 'Sign Up', headerShown: true }}
+            options={{ title: 'Sign Up', headerShown: false }}
           />,
         ]
       ) : (

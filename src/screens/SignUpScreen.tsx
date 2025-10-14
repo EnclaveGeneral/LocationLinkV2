@@ -19,6 +19,7 @@ import CustomModal from "@/components/modal";
 import { authService } from "../services/authService";
 import { dataService } from "../services/dataService";
 import { Ionicons } from '@expo/vector-icons';
+import { BatchStatementErrorCodeEnum } from "@aws-sdk/client-dynamodb";
 
 // Get the current device size to style our elements appropriately.
 const {height, width} = Dimensions.get("screen");
@@ -39,7 +40,8 @@ export default function SignUpScreen() {
   });
   const [code, setCode] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [topLoading, setTopLoading] = useState(false);
+  const [bottomLoading, setBottomLoading] = useState(false);
 
   // This effect will run everytime 'password' variable changes.
   useEffect(() => {
@@ -50,6 +52,24 @@ export default function SignUpScreen() {
     setModalContent({title, message, type});
     setModalVisible(true);
   };
+
+  // Resend the confirmation code if needed.
+  const handleResendCode = async () => {
+    try {
+      setBottomLoading(true);
+
+      // Call our function to fetch the signup Code
+      await authService.resendConfirmationCode(email);
+
+      showModal('Confirmation Code Sent', 'A new confirmation code has been sent to your email address', 'success');
+    } catch (error: any) {
+      showModal("Error", error.message || "Failed to resend code", "error");
+    } finally {
+      setBottomLoading(false);
+    }
+  }
+
+
 
   const handleSignUp = async () => {
     if (!email || !username || !password || !confirmPassword) {
@@ -62,15 +82,21 @@ export default function SignUpScreen() {
       return;
     }
 
-    setLoading(true);
+    setTopLoading(true);
     try {
-      await authService.signUp(email, password, username);
-      setShowConfirm(true);
+      await authService.signUp(email, password, username, phoneNumber);
       showModal("Registration Suceed", "Please select the method for MFA Authentication Next", "success");
+
+      // Transition to the next page after the user has see the pop up modal message.
+      setTimeout(() => {
+        setModalVisible(false);
+        setShowConfirm(true);
+      }, 1500);
+
     } catch (error: any) {
       showModal("Registration Error", error.message || "There is an error during registration", "error");
     } finally {
-      setLoading(false);
+      setTopLoading(false);
     }
   };
 
@@ -117,14 +143,14 @@ export default function SignUpScreen() {
     currentErrors.push(lowerCaseCheck + " At Least One Lowercase Letter");
     currentErrors.push(numbersCheck + " At Least One Numerical Digit");
     currentErrors.push(specialCheck + " At Least One Special Character");
-    currentErrors.push(confirmCheck + " Password Must Match Confirmed");
+    currentErrors.push(confirmCheck + " Password Confirmed Identical");
 
     return currentErrors;
 
   }
 
   const handleConfirm = async () => {
-    setLoading(true);
+    setTopLoading(true);
     try {
       await authService.confirmSignUp(email, code);
 
@@ -139,6 +165,7 @@ export default function SignUpScreen() {
           id: user.userId,
           username: username,
           email: email,
+          phoneNumber: phoneNumber,
           isLocationSharing: true,
           friends: [] // Initialize empty friends array
         });
@@ -151,11 +178,15 @@ export default function SignUpScreen() {
       }
 
       showModal("Registration Complete", "Your LocationLink account has been created", "success");
-      router.replace("/(tabs)");
+
+      setTimeout(() => {
+        setModalVisible(false);
+        router.replace("/(tabs)");
+      }, 1500);
     } catch (error: any) {
       showModal("Error", error.message || "There is an error in confirming your account", 'error');
     } finally {
-      setLoading(false);
+      setTopLoading(false);
     }
   };
 
@@ -173,25 +204,42 @@ export default function SignUpScreen() {
             value={code}
             onChangeText={setCode}
             keyboardType="number-pad"
-            editable={!loading}
+            editable={!topLoading}
           />
 
           <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+            style={[styles.button, styles.confirmButton, topLoading && styles.buttonDisabled]}
             onPress={handleConfirm}
-            disabled={loading}
+            disabled={topLoading}
           >
 
-          {loading ? (
+          {topLoading ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>Confirm</Text>
           )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setShowConfirm(false)} disabled={loading}>
-            <Text style={styles.link}>Back to Sign Up</Text>
+          <TouchableOpacity
+            style={[styles.button, styles.resendButton, bottomLoading && styles.buttonDisabled]}
+            onPress={handleResendCode}
+            disabled={bottomLoading}
+          >
+
+          {bottomLoading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>Resend Confirmation Code</Text>
+          )}
           </TouchableOpacity>
+
+          {/* <TouchableOpacity
+            onPress={() => {
+              setShowConfirm(false);
+              setModalVisible(false);
+            }} disabled={loading}>
+            <Text style={styles.link}>Back to Sign Up</Text>
+          </TouchableOpacity> */}
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -216,7 +264,7 @@ export default function SignUpScreen() {
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
-          editable={!loading}
+          editable={!topLoading}
         />
 
         <TextInput
@@ -226,7 +274,17 @@ export default function SignUpScreen() {
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          editable={!loading}
+          editable={!topLoading}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Phone"
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          keyboardType='number-pad'
+          autoCapitalize="none"
+          editable={!topLoading}
         />
 
         <View>
@@ -236,7 +294,7 @@ export default function SignUpScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
-            editable={!loading}
+            editable={!topLoading}
           />
 
           <TouchableOpacity
@@ -257,7 +315,7 @@ export default function SignUpScreen() {
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry={!showPassword}
-          editable={!loading}
+          editable={!topLoading}
         />
 
         <View style={styles.errorList}>
@@ -272,20 +330,21 @@ export default function SignUpScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[topLoading && styles.buttonDisabled]}
           onPress={handleSignUp}
-          disabled={loading}
+          disabled={topLoading}
         >
           <LinearGradient
             // Gradient goes from left to right
-            colors={['#3385F0', '#5611CB']}
+            colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
+            locations={[0, 0.5, 1]}
             start={{x: 0, y: 0}}
-            end={{ x: 0, y: 1}}
+            end={{ x: 1, y: 0}}
             style={styles.button}
 
           >
 
-            {loading ? (
+            {topLoading ? (
               <ActivityIndicator color="white" />
             ) : (
               <Text style={styles.buttonText}>Register</Text>
@@ -293,8 +352,31 @@ export default function SignUpScreen() {
           </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/signin")} disabled={loading}>
-          <Text style={styles.link}>Already have an account? Sign In Instead Here.</Text>
+        {/* <TouchableOpacity
+          style={[loading && styles.buttonDisabled]}
+          onPress={transitionToConfirm}
+          disabled={loading}
+        >
+          <LinearGradient
+            // Gradient goes from left to right
+            colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
+            locations={[0, 0.5, 1]}
+            start={{x: 0, y: 0}}
+            end={{ x: 1, y: 0}}
+            style={styles.button}
+
+          >
+
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.buttonText}>Confirm Account</Text>
+            )}
+          </LinearGradient>
+        </TouchableOpacity> */}
+
+        <TouchableOpacity onPress={() => router.push("/signin")} disabled={topLoading}>
+          <Text style={styles.link}>Already have an account? Sign In HERE.</Text>
         </TouchableOpacity>
 
         <CustomModal
@@ -365,8 +447,16 @@ const styles = StyleSheet.create({
     padding: width * 0.03,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: width * 0.10,
+    marginTop: width * 0.05,
   },
+  confirmButton: {
+    backgroundColor: '#32af16ff',
+  },
+
+  resendButton: {
+    backgroundColor: '#A910F5',
+  },
+
   buttonDisabled: {
     opacity: 0.7,
   },
@@ -387,6 +477,7 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     textAlign: "center",
     textDecorationLine: "underline",
+    marginTop: width * 0.025,
     marginBottom: width * 0.075,
     fontSize: width * 0.035,
   },

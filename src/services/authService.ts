@@ -1,8 +1,8 @@
 // src/services/authService.ts
-import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes } from 'aws-amplify/auth';
+import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes, resendSignUpCode } from 'aws-amplify/auth';
 
 export const authService = {
-  async signUp(email: string, password: string, username: string) {
+  async signUp(email: string, password: string, username: string, phoneNumber: string) {
     const result = await signUp({
       username: email,
       password,
@@ -10,6 +10,7 @@ export const authService = {
         userAttributes: {
           email,
           preferred_username: username,
+          phone_number: phoneNumber,
         },
       },
     });
@@ -22,6 +23,13 @@ export const authService = {
       confirmationCode: code,
     });
     return result.isSignUpComplete;
+  },
+
+  async resendConfirmationCode (email: string) {
+    const result = await resendSignUpCode({
+      username: email,
+    });
+    return result;
   },
 
   async signIn(email: string, password: string) {

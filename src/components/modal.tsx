@@ -10,6 +10,7 @@ interface CustomModalProps {
   message: string;
   onClose: () => void;
   type?: 'error' | 'success' | 'warning';
+  onConfirm?: () => void;
 }
 
 export default function CustomModal({
@@ -17,8 +18,17 @@ export default function CustomModal({
   title,
   message,
   onClose,
-  type = 'error'
+  type = 'error',
+  onConfirm
 }: CustomModalProps) {
+
+  const handleConfirm = () => {
+    if (onConfirm) {
+      onConfirm();
+    } else {
+      onClose();
+    }
+  }
 
   return (
     <Modal
@@ -59,7 +69,7 @@ export default function CustomModal({
             <View style={styles.buttonLayout}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonLeft]}
-                onPress={onClose}
+                onPress={handleConfirm}
               >
                 <Text style={[styles.buttonText, styles.leftButtonText]}>Confirm</Text>
               </TouchableOpacity>
@@ -87,8 +97,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     borderRadius: width * 0.015,
-    width: '70%',
-    maxWidth: width * 0.75,
+    width: width * 0.75,
     shadowColor: '#000',
     justifyContent: 'space-between',
     shadowOffset: { width: 0, height: 2 },
@@ -102,10 +111,10 @@ const styles = StyleSheet.create({
 
   },
   successModal: {
-    color: '#rgba(87, 230, 39, 1)',
+    color: '#rgba(42, 153, 14, 1)',
   },
   warningModal: {
-
+    color: '#A910F5',
   },
   title: {
     fontSize: width * 0.040,
