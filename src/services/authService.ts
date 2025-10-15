@@ -3,16 +3,24 @@ import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttrib
 
 export const authService = {
   async signUp(email: string, password: string, username: string, phoneNumber: string) {
+
+    // Build out the user profile and attributes conditionally based on available information
+    const userAttributes: any = {
+      email,
+      preferred_username: username,
+    }
+
+    // Add phone number if provided in a valid format
+    if (phoneNumber && phoneNumber.trim()) {
+      userAttributes.phone_number = phoneNumber;
+    }
+
     const result = await signUp({
       username: email,
-      password,
+      password: password,
       options: {
-        userAttributes: {
-          email,
-          preferred_username: username,
-          phone_number: phoneNumber,
-        },
-      },
+        userAttributes,
+      }
     });
     return result;
   },

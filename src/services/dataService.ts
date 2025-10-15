@@ -8,7 +8,8 @@ export const dataService = {
       // Initialize with empty friends array if not provided
       const userDataWithDefaults = {
         ...userData,
-        friends: userData.friends || []
+        friends: userData.friends || [],
+        phoneNumber: userData.phoneNumber || '',
       };
 
       const { data, errors } = await client.models.User.create(userDataWithDefaults);

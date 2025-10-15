@@ -3,10 +3,58 @@ import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, Image, ImageSourcePropType} from 'react-native';
+import { useSubscriptions } from '../../src/contexts/SubscriptionContext';
+import { TabActions, useLinkProps } from '@react-navigation/native';
+import FriendsScreen from './friends';
+
+// Create our custom TabIcons
+const TabIcon = ({
+  source,
+  color,
+  size,
+  focused,
+  badgeCount
+} : {
+  source: ImageSourcePropType,
+  color: string,
+  size: number,
+  focused: boolean,
+  badgeCount?: number
+}) => {
+  return (
+    <View>
+      <Image
+        source={source}
+        style={[
+          styles.baseIcon,
+          {
+            width: size,
+            height: size,
+            tintColor: color,
+            opacity: focused ? 1 : 0.7,
+          }
+        ]}
+      />
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 export default function TabLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Fetch the number of friends that are online and the numebr of subscriptions.
+  const { pendingRequests, friends } = useSubscriptions();
+
+  // Fetch the number of friends currently online sharing their locations
+  const friendsOnline = friends.filter(f => f.isLocationSharing).length;
 
   useEffect(() => {
     checkAuth();
@@ -42,7 +90,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: '#4CAF50',
         tabBarInactiveTintColor: 'gray',
         headerStyle: {
-          backgroundColor: '#4CAF50',
+          backgroundColor: '#A910F5',
         },
         headerTintColor: '#fff',
         headerTitleStyle: {
@@ -54,12 +102,22 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Map',
-          headerTitle: 'LocationLink',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'map' : 'map-outline'}
-              size={size}
-              color={color}
+          headerShown: true,
+          headerTitle: () => (
+            <View style={styles.headerContainer}>
+              <Image
+                style={styles.headerImg}
+                source={require('../../assets/task_bar_icon.png')}
+              />
+              <Text style={styles.headerText}>
+                LocationLink
+              </Text>
+            </View>
+          ),
+          tabBarIcon: (props) => (
+            <TabIcon
+              {...props}
+              source={require('../../assets/map_icon.png')}
             />
           ),
         }}
@@ -67,13 +125,20 @@ export default function TabLayout() {
       <Tabs.Screen
         name="friends"
         options={{
+          headerShown: true,
           title: 'Friends',
-          headerTitle: 'My Friends',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'people' : 'people-outline'}
-              size={size}
-              color={color}
+          headerTitle: () => (
+            <View style={styles.headerContainer}>
+              <Text style={styles.headerText}>
+                My Friends
+              </Text>
+            </View>
+          ),
+          tabBarIcon: (props) => (
+            <TabIcon
+              {...props}
+              source={require('../../assets/friends_icon.png')}
+              badgeCount={friendsOnline}
             />
           ),
         }}
@@ -81,13 +146,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="requests"
         options={{
+          headerShown: true,
           title: 'Requests',
-          headerTitle: 'Friend Requests',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'person-add' : 'person-add-outline'}
-              size={size}
-              color={color}
+          headerTitle: () => (
+            <View style={styles.headerContainer}>
+              <Text style={styles.headerText}>
+                My Friend Requests
+              </Text>
+            </View>
+          ),
+          tabBarIcon: (props) => (
+            <TabIcon
+              {...props}
+              source={require('../../assets/add_friend_icon.png')}
             />
           ),
         }}
@@ -95,13 +166,20 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          headerShown: true,
           title: 'Profile',
-          headerTitle: 'My Profile',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'person' : 'person-outline'}
-              size={size}
-              color={color}
+          headerTitle: () => (
+            <View style={styles.headerContainer}>
+              <Text style={styles.headerText}>
+                Profile
+              </Text>
+            </View>
+          ),
+          tabBarIcon: (props) => (
+            <TabIcon
+              {...props}
+              source={require('../../assets/profile_icon.png')}
+              badgeCount={pendingRequests.length}
             />
           ),
         }}
@@ -109,3 +187,26 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  baseIcon: {
+    resizeMode: 'contain' as const,
+  },
+  headerContainer: {
+    justifyContent: 'center',
+  },
+  headerImg: {
+    width: 24,
+    height: 24,
+    resizeMode: 'contain',
+  },
+  headerText: {
+    color: '#A910F5',
+  },
+  badge: {
+
+  },
+  badgeText: {
+
+  },
+})

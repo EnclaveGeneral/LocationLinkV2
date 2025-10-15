@@ -9,7 +9,7 @@ const schema = a.schema({
     .model({
       username: a.string().required(),
       email: a.string().required(),
-      phoneNumber: a.string().required(),
+      phoneNumber: a.string(),
       latitude: a.float(),
       longitude: a.float(),
       locationUpdatedAt: a.datetime(),

@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import CustomModal from "@/components/modal";
 import { authService } from "../services/authService";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -22,23 +23,34 @@ export default function SignInScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [topLoading, setTopLoading] = useState(false);
+  const [bottomLoading, setBottomLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalContent, setModalContent] = useState({
+    title: '',
+    message: '',
+    type: 'error' as 'error' | 'success' | 'warning'
+  });
+
+  const showModal = (title: string, message: string, type: 'error' | 'success' | 'warning' = 'error') => {
+    setModalVisible(true);
+    setModalContent({title, message, type});
+  };
 
   const handleSignIn = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showModal("Sign In Failed", "One or more required attribute(s) are unfilled", 'error');
       return;
     }
 
-    setLoading(true);
+    setTopLoading(true);
     try {
       await authService.signIn(email, password);
-      Alert.alert("Success", "Welcome back!");
       router.replace("/(tabs)");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to sign in");
+      showModal("Sign In Failed", error.message || "An error has occured during sign in", 'error');
     } finally {
-      setLoading(false);
+      setTopLoading(false);
     }
   };
 
@@ -59,7 +71,7 @@ export default function SignInScreen() {
         onChangeText={setEmail}
         keyboardType="email-address"
         autoCapitalize="none"
-        editable={!loading}
+        editable={!topLoading}
       />
 
       <View>
@@ -69,7 +81,7 @@ export default function SignInScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry={!showPassword}
-          editable={!loading}
+          editable={!topLoading}
         />
 
         <TouchableOpacity
@@ -85,9 +97,9 @@ export default function SignInScreen() {
       </View>
 
       <TouchableOpacity
-        style={[loading && styles.buttonDisabled]}
+        style={[topLoading && styles.buttonDisabled]}
         onPress={handleSignIn}
-        disabled={loading}
+        disabled={topLoading}
       >
         <LinearGradient
          colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
@@ -96,7 +108,7 @@ export default function SignInScreen() {
           end={{ x: 1, y: 0}}
           style={[styles.button, styles.firstBtn]}
         >
-          {loading ? (
+          {topLoading ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>Sign In</Text>
@@ -105,7 +117,7 @@ export default function SignInScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[loading && styles.buttonDisabled]}
+        style={[bottomLoading && styles.buttonDisabled]}
         // onPress={ ** Function that leads to Account Recovery }
         disabled={true} // Change this to loading once function above implemented
       >
@@ -117,7 +129,7 @@ export default function SignInScreen() {
           end={{ x: 1, y: 0}}
           style={styles.button}
         >
-          {loading ? (
+          {bottomLoading ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>Forget Password/Recovery</Text>
@@ -125,9 +137,17 @@ export default function SignInScreen() {
         </LinearGradient>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.push("/signup")} disabled={loading}>
+      <TouchableOpacity onPress={() => router.push("/signup")} disabled={topLoading && bottomLoading}>
         <Text style={styles.link}>Don’t have an account? Register HERE</Text>
       </TouchableOpacity>
+
+      <CustomModal
+        visible={modalVisible}
+        title={modalContent.title}
+        message={modalContent.message}
+        type={modalContent.type}
+        onClose={() => setModalVisible(false)}
+      />
     </View>
   );
 }

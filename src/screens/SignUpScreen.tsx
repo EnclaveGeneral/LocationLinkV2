@@ -279,10 +279,10 @@ export default function SignUpScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="Phone"
+          placeholder="Phone (Optional)"
           value={phoneNumber}
           onChangeText={setPhoneNumber}
-          keyboardType='number-pad'
+          keyboardType='phone-pad'
           autoCapitalize="none"
           editable={!topLoading}
         />
