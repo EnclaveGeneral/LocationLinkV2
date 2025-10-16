@@ -1,3 +1,4 @@
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { Amplify } from 'aws-amplify';
@@ -28,32 +29,34 @@ function RootNavigator() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-      }}
-    >
-      {!isAuthenticated ? (
-        [
+    <SafeAreaProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      >
+        {!isAuthenticated ? (
+          [
+            <Stack.Screen
+              key="signin"
+              name="signin"
+              options={{ title: 'Sign In', headerShown: false }}
+            />,
+            <Stack.Screen
+              key="signup"
+              name="signup"
+              options={{ title: 'Sign Up', headerShown: false }}
+            />,
+          ]
+        ) : (
           <Stack.Screen
-            key="signin"
-            name="signin"
-            options={{ title: 'Sign In', headerShown: false }}
-          />,
-          <Stack.Screen
-            key="signup"
-            name="signup"
-            options={{ title: 'Sign Up', headerShown: false }}
-          />,
-        ]
-      ) : (
-        <Stack.Screen
-          name="(tabs)"
-          options={{ headerShown: false }}
-        />
-      )}
-    </Stack>
+            name="(tabs)"
+            options={{ headerShown: false }}
+          />
+        )}
+      </Stack>
+    </SafeAreaProvider>
   );
 }
 

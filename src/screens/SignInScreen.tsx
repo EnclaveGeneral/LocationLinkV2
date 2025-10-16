@@ -17,7 +17,7 @@ import CustomModal from "@/components/modal";
 import { authService } from "../services/authService";
 import { LinearGradient } from "expo-linear-gradient";
 
-const { width, height} = Dimensions.get('screen');
+const { height, width } = Dimensions.get('screen');
 
 export default function SignInScreen() {
   const [email, setEmail] = useState("");
@@ -36,6 +36,8 @@ export default function SignInScreen() {
     setModalVisible(true);
     setModalContent({title, message, type});
   };
+
+  const filled = email.trim() !== "" && password.trim() !== "";
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -97,12 +99,16 @@ export default function SignInScreen() {
       </View>
 
       <TouchableOpacity
-        style={[topLoading && styles.buttonDisabled]}
+        style={[topLoading && styles.firstBtn]}
         onPress={handleSignIn}
-        disabled={topLoading}
+        disabled={topLoading || !filled}
       >
         <LinearGradient
-         colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
+         colors={
+                !filled || topLoading
+                  ? ['#a8a4a4ef', '#a8a4a4ef', '#a8a4a4ef']
+                  : ['#1b3decff', '#9420ceff', '#4709b1ff']
+          }
           locations={[0, 0.5, 1]}
           start={{x: 0, y: 0}}
           end={{ x: 1, y: 0}}
@@ -117,7 +123,7 @@ export default function SignInScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[bottomLoading && styles.buttonDisabled]}
+        style={bottomLoading && styles.button}
         // onPress={ ** Function that leads to Account Recovery }
         disabled={true} // Change this to loading once function above implemented
       >
@@ -205,9 +211,6 @@ const styles = StyleSheet.create({
   },
   firstBtn: {
     marginTop: width * 0.1,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
   },
   buttonText: {
     color: "white",

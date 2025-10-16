@@ -28,6 +28,7 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmationCode, setConfirmationCode] = useState("");
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -38,10 +39,10 @@ export default function SignUpScreen() {
     message: '',
     type: 'error' as 'error' | 'success' | 'warning'
   });
-  const [code, setCode] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [topLoading, setTopLoading] = useState(false);
   const [bottomLoading, setBottomLoading] = useState(false);
+  const [disabled, setDisabled] = useState(false);
 
   // This effect will run everytime 'password' variable changes.
   useEffect(() => {
@@ -52,6 +53,24 @@ export default function SignUpScreen() {
     setModalContent({title, message, type});
     setModalVisible(true);
   };
+
+  const filledCorrectly = () => {
+    const currentFill = email.trim() !== "" && username.trim() !== "";
+    if (!currentFill) {
+      return false;
+    }
+
+    // Check if password is fill out correctly, same as confirmed Password.
+    const res = validatePasswords();
+
+    for (const cur of res) {
+      if (cur.charAt(0) == "❌") {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   // Resend the confirmation code if needed.
   const handleResendCode = async () => {
@@ -152,7 +171,7 @@ export default function SignUpScreen() {
   const handleConfirm = async () => {
     setTopLoading(true);
     try {
-      await authService.confirmSignUp(email, code);
+      await authService.confirmSignUp(email, confirmationCode);
 
       // Auto sign in
       await authService.signIn(email, password);
@@ -201,16 +220,20 @@ export default function SignUpScreen() {
           <TextInput
             style={styles.input}
             placeholder="Confirmation Code"
-            value={code}
-            onChangeText={setCode}
+            value={confirmationCode}
+            onChangeText={setConfirmationCode}
             keyboardType="number-pad"
             editable={!topLoading}
           />
 
           <TouchableOpacity
-            style={[styles.button, styles.confirmButton, topLoading && styles.buttonDisabled]}
+            style={[styles.button,
+                topLoading || confirmationCode.trim() === ""
+                  ? styles.buttonDisabled
+                  : styles.confirmButton
+                ]}
             onPress={handleConfirm}
-            disabled={topLoading}
+            disabled={topLoading || confirmationCode.trim() === ""}
           >
 
           {topLoading ? (
@@ -332,11 +355,15 @@ export default function SignUpScreen() {
         <TouchableOpacity
           style={[topLoading && styles.buttonDisabled]}
           onPress={handleSignUp}
-          disabled={topLoading}
+          disabled={topLoading || !filledCorrectly()}
         >
           <LinearGradient
             // Gradient goes from left to right
-            colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
+            colors={
+                  topLoading || !filledCorrectly()
+                    ? ['#a8a4a4ef', '#a8a4a4ef', '#a8a4a4ef']
+                    : ['#1b3decff', '#9420ceff', '#4709b1ff']
+                  }
             locations={[0, 0.5, 1]}
             start={{x: 0, y: 0}}
             end={{ x: 1, y: 0}}
@@ -458,7 +485,7 @@ const styles = StyleSheet.create({
   },
 
   buttonDisabled: {
-    opacity: 0.7,
+    backgroundColor: '#a8a4a4ef',
   },
   buttonText: {
     color: "white",
