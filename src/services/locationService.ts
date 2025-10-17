@@ -43,8 +43,8 @@ export class LocationService {
     this.locationSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: 60000, // Update every minute
-        distanceInterval: 50, // Or every 50 meters
+        timeInterval: 5000, // Update every 5 seconds of time
+        distanceInterval: 10, // Update on every 10 meters of movement
       },
       async (location) => {
         const coords = {

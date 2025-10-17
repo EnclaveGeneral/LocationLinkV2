@@ -17,6 +17,7 @@ import { authService } from '../services/authService';
 import { client } from '../services/amplifyConfig';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/modal';
+import { SubscriptionService } from '@/services/subscriptionService';
 
 export default function RequestsScreen() {
   const [searchUsername, setSearchUsername] = useState('');
@@ -54,33 +55,23 @@ export default function RequestsScreen() {
 
   const setupSubscriptions = (userId: string) => {
     try {
-      // FIXED: Single subscription with NO filter, then filter on client side
-      const sub = client.models.FriendRequest.observeQuery().subscribe({
-        next: ({ items }) => {
-          // Filter on client side for this user's requests
-          const incoming = items.filter(item =>
-            item.receiverId === userId && item.status === 'PENDING'
-          );
-          const sent = items.filter(item =>
-            item.senderId === userId && item.status === 'PENDING'
-          );
+      const subscriptionService = SubscriptionService.getInstance();
 
-          setPendingRequests(incoming);
-          setSentRequests(sent);
+      // The new method handles both initial load AND real-time updates
+      const sub = subscriptionService.subscribeFriendRequests(userId, (requests) => {
+        // Filter on client side
+        const incoming = requests.filter(item => item.receiverId === userId);
+        const sent = requests.filter(item => item.senderId === userId);
 
-          // Check for accepted requests from sent items
-          const accepted = items.find(req =>
-            req.senderId === userId && req.status === 'ACCEPTED'
-          );
-          if (accepted) {
-            Alert.alert('Request Accepted!', `${accepted.receiverUsername} accepted your friend request!`);
-          }
-        },
-        error: (error) => {
-          console.error('Friend requests subscription error:', error);
-          if (error?.error?.errors) {
-            console.error('Detailed error:', JSON.stringify(error.error.errors, null, 2));
-          }
+        setPendingRequests(incoming);
+        setSentRequests(sent);
+
+        // Check for accepted requests
+        const accepted = requests.find(req =>
+          req.senderId === userId && req.status === 'ACCEPTED'
+        );
+        if (accepted) {
+          Alert.alert('Request Accepted!', `${accepted.receiverUsername} accepted your friend request!`);
         }
       });
 
@@ -89,6 +80,7 @@ export default function RequestsScreen() {
       console.error('Error setting up subscriptions:', error);
     }
   };
+
 
   const loadRequests = async (userId: string) => {
     try {

@@ -1,3 +1,4 @@
+// src/contexts/SubscriptionContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { SubscriptionService } from '../services/subscriptionService';
 import { authService } from '../services/authService';
@@ -32,12 +33,17 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       subscriptionService = SubscriptionService.getInstance();
 
-      // Subscribe to friend requests
+      // Subscribe to friend requests - NEW callback signature
       await subscriptionService.subscribeFriendRequests(user.userId, (requests) => {
-        setPendingRequests(requests);
+        // Filter for received vs sent
+        const received = requests.filter(r => r.receiverId === user.userId);
+        const sent = requests.filter(r => r.senderId === user.userId);
+
+        setPendingRequests(received);
+        setSentRequests(sent);
       });
 
-      // Subscribe to friendships and count online
+      // Subscribe to friendships - NEW callback signature
       await subscriptionService.subscribeFriendships(user.userId, async (friendships) => {
         // Get full friend data
         const friendsList = await friendService.getFriends(user.userId);
