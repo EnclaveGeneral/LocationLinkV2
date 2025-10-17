@@ -5,9 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { View, ActivityIndicator, StyleSheet, Text, Image, ImageSourcePropType, Dimensions} from 'react-native';
-import { useSubscriptions } from '../../src/contexts/SubscriptionContext';
-import { TabActions, useLinkProps } from '@react-navigation/native';
-import FriendsScreen from './friends';
+import { SubscriptionProvider, useSubscriptions } from '../../src/contexts/SubscriptionContext';
 
 // Create our custom TabIcons
 const TabIcon = ({
@@ -32,12 +30,12 @@ const TabIcon = ({
         return { backgroundColor: '#A910F5'}
       case 'requests':
         return { backgroundColor: '#32af16ff'}
+      default:
+        return { backgroundColor: '#666'}
     }
   }
 
   return (
-    // Style the badge colors based on the type of badge
-
     <View style={styles.tabIcon}>
       <Image
         source={source}
@@ -64,70 +62,33 @@ const TabIcon = ({
 
 const { height, width } = Dimensions.get('screen');
 
-
-export default function TabLayout() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-
-  // Fetch the number of friends that are online and the numebr of subscriptions.
+// Separate component that uses the subscription hook
+function TabsContent() {
   const { pendingRequests, friends } = useSubscriptions();
-  // const pendingRequests = 5;
-  // const friendsOnline = 10;
-
-  const friendsOnline = friends.filter(f => f.isLocationSharing).length;
+  const friendsOnline = friends.filter(f => f?.isLocationSharing).length;
 
   const insets = useSafeAreaInsets();
-
   const barHeight = width * 0.125 + insets.bottom;
   const iconSize = barHeight * 0.50;
   const textSize = barHeight * 0.25;
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      await getCurrentUser();
-      setIsAuthenticated(true);
-    } catch {
-      setIsAuthenticated(false);
-    }
-  };
-
-  // Still checking auth
-  if (isAuthenticated === null) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#A910F5" />
-      </View>
-    );
-  }
-
-  // Not authenticated, redirect to sign in
-  if (!isAuthenticated) {
-    return <Redirect href="/signin" />;
-  }
-
-  // Authenticated, show tabs
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#A910F5',
         tabBarInactiveTintColor: 'gray',
         tabBarStyle: {
-          height: barHeight,           // includes safe area
+          height: barHeight,
           paddingBottom: insets.bottom,
           paddingTop: 0,
-          justifyContent: 'center',    // center content vertically
+          justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: '#fff',     // or your color
-
+          backgroundColor: '#fff',
         },
         tabBarItemStyle: {
           flex: 1,
           justifyContent: 'center',
           alignItems: 'center',
-
         },
         tabBarLabelStyle: {
           fontSize: textSize,
@@ -136,7 +97,6 @@ export default function TabLayout() {
         tabBarIconStyle: {
           justifyContent: 'center',
           alignItems: 'center',
-
         },
       }}
     >
@@ -152,15 +112,11 @@ export default function TabLayout() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                {/* Left icon */}
                 <Image
                   style={styles.headerImg}
                   source={require('../../assets/task_bar_icon.png')}
                 />
-
-                {/* Center title */}
                 <Text style={styles.headerText}>LocationLink</Text>
-
               </View>
             </LinearGradient>
           ),
@@ -191,15 +147,7 @@ export default function TabLayout() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                {/* Left icon */}
-                {/* <Image
-                  style={styles.headerImg}
-                  source={require('../../assets/task_bar_icon.png')}
-                /> */}
-
-                {/* Center title */}
                 <Text style={styles.headerText}>My Friends</Text>
-
               </View>
             </LinearGradient>
           ),
@@ -231,15 +179,7 @@ export default function TabLayout() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                {/* Left icon */}
-                {/* <Image
-                  style={styles.headerImg}
-                  source={require('../../assets/task_bar_icon.png')}
-                /> */}
-
-                {/* Center title */}
                 <Text style={styles.headerText}>My Requests</Text>
-
               </View>
             </LinearGradient>
           ),
@@ -271,15 +211,7 @@ export default function TabLayout() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                {/* Left icon */}
-                {/* <Image
-                  style={styles.headerImg}
-                  source={require('../../assets/task_bar_icon.png')}
-                /> */}
-
-                {/* Center title */}
                 <Text style={styles.headerText}>My Profile</Text>
-
               </View>
             </LinearGradient>
           ),
@@ -301,6 +233,44 @@ export default function TabLayout() {
   );
 }
 
+export default function TabLayout() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      await getCurrentUser();
+      setIsAuthenticated(true);
+    } catch {
+      setIsAuthenticated(false);
+    }
+  };
+
+  // Still checking auth
+  if (isAuthenticated === null) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#A910F5" />
+      </View>
+    );
+  }
+
+  // Not authenticated, redirect to sign in
+  if (!isAuthenticated) {
+    return <Redirect href="/signin" />;
+  }
+
+  // Authenticated, show tabs wrapped in SubscriptionProvider
+  return (
+    <SubscriptionProvider>
+      <TabsContent />
+    </SubscriptionProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   baseIcon: {
     resizeMode: 'contain' as const,
@@ -314,7 +284,7 @@ const styles = StyleSheet.create({
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', // left - center - right layout
+    justifyContent: 'space-between',
   },
   headerImg: {
     marginLeft: width * 0.0075,
@@ -328,11 +298,7 @@ const styles = StyleSheet.create({
     fontSize: width * 0.050,
     fontWeight: 'bold',
     textAlign: 'center',
-    flex: 1, // ensures takes remaining space
-  },
-  tabBarItems: {
     flex: 1,
-    alignItems: 'center',
   },
   badge: {
     position: 'absolute',
@@ -352,4 +318,4 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-})
+});

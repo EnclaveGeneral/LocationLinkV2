@@ -1,6 +1,5 @@
 // src/screens/FriendsScreen.tsx
-import { router } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,87 +12,89 @@ import {
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
+import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
+import CustomModal from '@/components/modal';
 
 export default function FriendsScreen() {
-  const [friends, setFriends] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [removingFriendId, setRemovingFriendId] = useState<string | null>(null); // Track which friend is being removed
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<any>(null);
 
-  useEffect(() => {
-    loadFriends();
-  }, []);
+  const { friends } = useSubscriptions();
 
-  const loadFriends = async () => {
-    try {
-      const user = await authService.getCurrentUser();
-      if (!user) return;
-
-      const friendsList = await friendService.getFriends(user.userId);
-      setFriends(friendsList);
-    } catch (error) {
-      console.error('Error loading friends:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  console.log('👥 FriendsScreen rendering:', friends.length, 'friends');
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadFriends();
-    setRefreshing(false);
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   const removeFriend = async (friend: any) => {
-    Alert.alert(
-      'Remove Friend',
-      `Are you sure you want to remove ${friend.username}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const user = await authService.getCurrentUser();
-              if (!user) return;
+    setRemovingFriendId(friend.id);
+    try {
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        Alert.alert('Error', 'Not authenticated');
+        return;
+      }
 
-              await friendService.removeFriend(user.userId, friend.id);
-              await loadFriends();
-              Alert.alert('Success', 'Friend removed');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to remove friend');
-            }
-          },
-        },
-      ]
-    );
+      console.log('🗑️ Removing friend:', friend.username);
+
+      // Set a timeout in case Lambda is slow
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), 15000) // 15 second timeout
+      );
+
+      const removePromise = friendService.removeFriend(user.userId, friend.id);
+
+      await Promise.race([removePromise, timeoutPromise]);
+
+      console.log('✅ Friend removed successfully');
+      Alert.alert('Success', 'Friend removed');
+    } catch (error: any) {
+      console.error('❌ Error removing friend:', error);
+      if (error.message === 'Request timeout') {
+        Alert.alert('Timeout', 'Request is taking too long. The friend may have been removed. Please refresh.');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to remove friend');
+      }
+    } finally {
+      setRemovingFriendId(null);
+    }
   };
 
-  const renderFriend = ({ item }: any) => (
-    <View style={styles.friendItem}>
-      <View style={styles.friendInfo}>
-        <Ionicons name="person-circle" size={50} color="#4CAF50" />
-        <View style={styles.friendDetails}>
-          <Text style={styles.friendName}>{item.username}</Text>
-          <Text style={styles.friendStatus}>
-            {item.isLocationSharing ? '📍 Sharing location' : '📍 Location off'}
-          </Text>
-        </View>
-      </View>
-      <TouchableOpacity onPress={() => removeFriend(item)}>
-        <Ionicons name="close-circle" size={24} color="#ff5252" />
-      </TouchableOpacity>
-    </View>
-  );
+  const renderFriend = ({ item }: any) => {
+    const isRemoving = removingFriendId === item.id;
 
-  if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+      <View style={styles.friendItem}>
+        <View style={styles.friendInfo}>
+          <Ionicons name="person-circle" size={50} color="#4CAF50" />
+          <View style={styles.friendDetails}>
+            <Text style={styles.friendName}>{item.username}</Text>
+            <Text style={styles.friendStatus}>
+              {item.isLocationSharing ? '📍 Sharing location' : '📍 Location off'}
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={() => {
+            setSelectedFriend(item);
+            setModalVisible(true);
+          }}
+          disabled={isRemoving}
+        >
+          {isRemoving ? (
+            <ActivityIndicator size="small" color="#ff5252" />
+          ) : (
+            <Ionicons name="close-circle" size={24} color="#ff5252" />
+          )}
+        </TouchableOpacity>
       </View>
     );
-  }
+  };
 
   return (
     <View style={styles.container}>
@@ -111,6 +112,20 @@ export default function FriendsScreen() {
           </View>
         }
       />
+
+      <CustomModal
+        visible={modalVisible}
+        title={'Remove Friend'}
+        message={`Are you sure you want to remove ${selectedFriend?.username}?`}
+        type={'warning'}
+        onClose={() => setModalVisible(false)}
+        onConfirm={() => {
+          if (selectedFriend) {
+            removeFriend(selectedFriend);
+            setModalVisible(false);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -119,11 +134,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   friendItem: {
     flexDirection: 'row',

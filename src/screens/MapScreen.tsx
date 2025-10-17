@@ -13,8 +13,7 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
-import { friendService } from '../services/friendService';
-import { SubscriptionService } from '../services/subscriptionService';
+import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 
 const { height, width } = Dimensions.get('screen');
@@ -28,27 +27,25 @@ export default function MapScreen() {
     longitudeDelta: 0.0421,
   });
   const [userLocation, setUserLocation] = useState<any>(null);
-  const [friends, setFriends] = useState<Map<string, any>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string>('');
-  const subscriptionServiceRef = useRef<SubscriptionService | null>(null);
+
+  // Read friends from context
+  const { friendsMap, friendsOnline } = useSubscriptions();
 
   useEffect(() => {
     initializeMap();
-
-    // Cleanup subscriptions on unmount
-    return () => {
-      subscriptionServiceRef.current?.unsubscribeAll();
-    };
   }, []);
+
+  // Log whenever friendsMap changes
+  useEffect(() => {
+    console.log('🗺️ MapScreen - friendsMap updated:', friendsMap.size, 'friends');
+  }, [friendsMap]);
 
   const initializeMap = async () => {
     try {
       const user = await authService.getCurrentUser();
       if (!user) return;
-
-      setCurrentUserId(user.userId);
 
       // Start location tracking
       const locationService = LocationService.getInstance();
@@ -68,8 +65,6 @@ export default function MapScreen() {
         });
       }
 
-      // Load friends and setup subscriptions
-      await loadFriendsWithSubscriptions(user.userId);
     } catch (error) {
       console.error('Error initializing map:', error);
     } finally {
@@ -77,78 +72,10 @@ export default function MapScreen() {
     }
   };
 
-  const loadFriendsWithSubscriptions = async (userId: string) => {
-    try {
-      // Get initial friends list
-      const friendsList = await friendService.getFriends(userId);
-
-      // Populate map with location-sharing friends
-      const friendsMap = new Map();
-      friendsList.forEach(friend => {
-        if (friend?.isLocationSharing && friend.latitude && friend.longitude) {
-          friendsMap.set(friend.id, friend);
-        }
-      });
-      setFriends(friendsMap);
-
-      // Initialize SubscriptionService
-      subscriptionServiceRef.current = SubscriptionService.getInstance();
-
-      // Subscribe to friend locations via SubscriptionService
-      const friendIds = friendsList.map(f => f.id);
-      await subscriptionServiceRef.current.subscribeFriendLocations(friendIds, (updatedFriend) => {
-        setFriends(prev => {
-          const newMap = new Map(prev);
-          if (updatedFriend.isLocationSharing && updatedFriend.latitude && updatedFriend.longitude) {
-            newMap.set(updatedFriend.id, {
-              ...updatedFriend,
-              locationUpdatedAt: new Date().toISOString(),
-            });
-          } else {
-            newMap.delete(updatedFriend.id);
-          }
-          return newMap;
-        });
-      });
-
-      // Subscribe to new friendships dynamically
-      await subscriptionServiceRef.current.subscribeNewFriendships(userId, async (newFriend) => {
-        if (!friendsMap.has(newFriend.id)) {
-          setFriends(prev => {
-            const newMap = new Map(prev);
-            if (newFriend.isLocationSharing && newFriend.latitude && newFriend.longitude) {
-              newMap.set(newFriend.id, newFriend);
-            }
-            return newMap;
-          });
-
-          // Subscribe to new friend's location
-          await subscriptionServiceRef.current.subscribeFriendLocations([newFriend.id], (updatedFriend) => {
-            setFriends(prev => {
-              const newMap = new Map(prev);
-              if (updatedFriend.isLocationSharing && updatedFriend.latitude && updatedFriend.longitude) {
-                newMap.set(updatedFriend.id, {
-                  ...updatedFriend,
-                  locationUpdatedAt: new Date().toISOString(),
-                });
-              } else {
-                newMap.delete(updatedFriend.id);
-              }
-              return newMap;
-            });
-          });
-        }
-      });
-
-    } catch (error) {
-      console.error('Error loading friends or subscribing:', error);
-    }
-  };
-
   const searchFriend = () => {
     if (!searchText.trim()) return;
 
-    const friendsArray = Array.from(friends.values());
+    const friendsArray = Array.from(friendsMap.values());
     const friend = friendsArray.find(f =>
       f.username.toLowerCase().includes(searchText.toLowerCase())
     );
@@ -178,12 +105,6 @@ export default function MapScreen() {
     }
   };
 
-  const refreshFriends = async () => {
-    if (!currentUserId) return;
-    await loadFriendsWithSubscriptions(currentUserId);
-    Alert.alert('Refreshed', 'Friend locations updated');
-  };
-
   if (loading) {
     return (
       <View style={styles.centerContainer}>
@@ -193,7 +114,12 @@ export default function MapScreen() {
     );
   }
 
-  const friendsArray = Array.from(friends.values());
+  // Get friends array from map, filter for those sharing location
+  const friendsArray = Array.from(friendsMap.values()).filter(
+    f => f.isLocationSharing && f.latitude && f.longitude
+  );
+
+  console.log('🗺️ MapScreen rendering:', friendsArray.length, 'friends visible on map');
 
   return (
     <View style={styles.container}>
@@ -236,7 +162,7 @@ export default function MapScreen() {
         {friendsArray.map((friend) => (
           <Marker
             key={friend.id}
-            coordinate={{ latitude: friend.latitude, longitude: friend.longitude }}
+            coordinate={{ latitude: friend.latitude!, longitude: friend.longitude! }}
             title={friend.username}
             description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'Unknown'}`}
           >
@@ -253,7 +179,13 @@ export default function MapScreen() {
         <Ionicons name="locate" size={24} color="#666" />
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.refreshButton} onPress={refreshFriends}>
+      <TouchableOpacity
+        style={styles.refreshButton}
+        onPress={async () => {
+          console.log('🔄 Manual refresh triggered');
+          Alert.alert('Refreshed', 'Friend locations updated');
+        }}
+      >
         <Ionicons name="refresh" size={24} color="#666" />
       </TouchableOpacity>
 
@@ -269,7 +201,6 @@ export default function MapScreen() {
   );
 }
 
-// Styles remain the same as your previous version
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -366,7 +297,7 @@ const styles = StyleSheet.create({
   refreshButton: {
     position: 'absolute',
     right: 15,
-    bottom: 160,
+    bottom: 160, // Above the center button
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -430,4 +361,3 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-

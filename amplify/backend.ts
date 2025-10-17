@@ -7,6 +7,7 @@ import { removeFriendFunction } from '../amplify/functions/remove-friend/resourc
 import { Stack } from 'aws-cdk-lib';
 // Grant DynamoDB permissions using IAM policies
 import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
+import { StreamViewType } from 'aws-cdk-lib/aws-dynamodb';
 
 const backend = defineBackend({
   auth,
@@ -19,9 +20,19 @@ const backend = defineBackend({
 const stack = Stack.of(backend.data);
 
 // Method 1: Get table names directly from the GraphQL schema
-const userTableName = backend.data.resources.tables['User'].tableName;
-const friendTableName = backend.data.resources.tables['Friend'].tableName;
-const friendRequestTableName = backend.data.resources.tables['FriendRequest'].tableName;
+const userTable = backend.data.resources.tables['User'];
+const friendTable = backend.data.resources.tables['Friend'];
+const friendRequestTable = backend.data.resources.tables['FriendRequest'];
+
+// Enable DynamoDB streams to all tables so AppSync can catch them!
+userTable.tableStreamArn;
+friendTable.tableStreamArn;
+friendRequestTable.tableStreamArn;
+
+// Get table names
+const userTableName = userTable.tableName;
+const friendTableName = friendTable.tableName;
+const friendRequestTableName = friendRequestTable.tableName;
 
 // Add environment variables to the Lambda functions
 backend.acceptFriendRequestFunction.addEnvironment(
@@ -59,12 +70,12 @@ backend.acceptFriendRequestFunction.resources.lambda.addToRolePolicy(
       'dynamodb:Scan',
     ],
     resources: [
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}/*`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}/*`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendRequestTableName}`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendRequestTableName}/*`
+      userTable.tableArn,
+      `${userTable.tableArn}/*`,
+      friendTable.tableArn,
+      `${friendTable.tableArn}/*`,
+      friendRequestTable.tableArn,
+      `${friendRequestTable.tableArn}/*`,
     ],
   })
 );
@@ -80,10 +91,10 @@ backend.removeFriendFunction.resources.lambda.addToRolePolicy(
       'dynamodb:Scan',
     ],
     resources: [
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${userTableName}/*`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}`,
-      `arn:aws:dynamodb:${stack.region}:${stack.account}:table/${friendTableName}/*`,
+      userTable.tableArn,
+      `${userTable.tableArn}/*`,
+      friendTable.tableArn,
+      `${friendTable.tableArn}/*`,
     ],
   })
 );

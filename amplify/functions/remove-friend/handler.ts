@@ -1,18 +1,40 @@
 // amplify/functions/remove-friend/handler.ts
 import type { Schema } from '../../data/resource';
-import type { AppSyncIdentityCognito } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 export const handler: Schema['removeFriendLambda']['functionHandler'] = async (event) => {
+  console.log('🔵 Lambda - Remove Friend Started');
+  console.log('Full event:', JSON.stringify(event, null, 2));
 
-  // Narrow the type
   const { friendId } = event.arguments;
-  const identity = event.identity as AppSyncIdentityCognito | undefined;
-  const userId = identity?.sub;
+
+  // Try multiple ways to get userId
+  let userId: string | undefined;
+
+  if (event.identity && 'sub' in event.identity) {
+    userId = event.identity.sub;
+  }
+
+  if (!userId && event.identity && 'username' in event.identity) {
+    userId = event.identity.username;
+  }
+
+  if (!userId && event.identity && 'claims' in event.identity) {
+    const claims = event.identity.claims as any;
+    userId = claims?.sub;
+  }
+
+  console.log('Extracted userId:', userId);
+  console.log('Friend ID:', friendId);
 
   if (!userId || !friendId) {
-    return {success: false, message: 'Missing userId or friendId'};
+    console.error('❌ Missing userId or friendId');
+    console.error('Identity object:', JSON.stringify(event.identity, null, 2));
+    return {
+      success: false,
+      message: 'Missing userId or friendId'
+    };
   }
 
   console.log(`Removing friendship between ${userId} and ${friendId}`);
@@ -21,15 +43,17 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
   const ddbDocClient = DynamoDBDocumentClient.from(client);
 
   try {
-    const userTable = process.env.USER_TABLE_NAME || 'User-[your-env-id]';
-    const friendTable = process.env.FRIEND_TABLE_NAME || 'Friend-[your-env-id]';
+    const userTable = process.env.USER_TABLE_NAME;
+    const friendTable = process.env.FRIEND_TABLE_NAME;
 
     if (!userTable || !friendTable) {
       throw new Error('Table names not configured');
     }
-    // 1. Find and delete Friend records
-    // Query for friendship records
 
+    console.log('Using tables:', { userTable, friendTable });
+
+    // 1. Find and delete Friend records
+    console.log('🔍 Scanning for friendship records...');
     const scanResult = await ddbDocClient.send(
       new ScanCommand({
         TableName: friendTable,
@@ -44,7 +68,6 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
 
     console.log(`Found ${scanResult.Items?.length || 0} friendship records to delete`);
 
-    // Delete all found friendships
     if (scanResult.Items && scanResult.Items.length > 0) {
       await Promise.all(
         scanResult.Items.map(item => {
@@ -55,9 +78,11 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
           }));
         })
       );
+      console.log('✅ Friendship records deleted');
     }
 
-    // 2. Update both users's friend arrays
+    // 2. Update both users' friend arrays
+    console.log('📝 Updating user friend arrays...');
     const [userResult, friendResult] = await Promise.all([
       ddbDocClient.send(new GetCommand({
         TableName: userTable,
@@ -71,14 +96,13 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
 
     console.log('Current user friends:', userResult.Item?.friends);
     console.log('Friend user friends:', friendResult.Item?.friends);
+
     const userFriends = (userResult.Item?.friends || []).filter((id: string) => id !== friendId);
     const friendFriends = (friendResult.Item?.friends || []).filter((id: string) => id !== userId);
+
     console.log('Updated user friends:', userFriends);
     console.log('Updated friend friends:', friendFriends);
 
-
-
-    // Update both users
     await Promise.all([
       ddbDocClient.send(new UpdateCommand({
         TableName: userTable,
@@ -100,7 +124,7 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
       }))
     ]);
 
-    console.log(`Successfully removed friendship between ${userId} and ${friendId}`);
+    console.log(`✅ Successfully removed friendship between ${userId} and ${friendId}`);
 
     return {
       success: true,
@@ -108,10 +132,10 @@ export const handler: Schema['removeFriendLambda']['functionHandler'] = async (e
     };
 
   } catch (error) {
-    console.error('Error removing friend:', error);
+    console.error('❌ Error removing friend:', error);
     return {
       success: false,
-      message: `Error: ${error instanceof Error ? error.message : 'Unknown error occured'}`,
+      message: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
     };
   }
 };

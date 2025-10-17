@@ -65,7 +65,7 @@
               "name": "phoneNumber",
               "isArray": false,
               "type": "String",
-              "isRequired": true,
+              "isRequired": false,
               "attributes": []
             },
             "latitude": {

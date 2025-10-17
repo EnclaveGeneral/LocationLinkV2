@@ -13,21 +13,54 @@ export class SubscriptionService {
     return SubscriptionService.instance;
   }
 
-  // Subscribe to friend location updates - single subscription with client-side filtering
+  // Subscribe to ALL user updates (for friend locations AND online status)
+  async subscribeAllUserUpdates(
+    onUpdate: (user: Schema['User']['type']) => void
+  ) {
+    try {
+      console.log('🔵 Setting up ALL user updates subscription');
+
+      const sub = client.models.User.onUpdate().subscribe({
+        next: (user: Schema['User']['type']) => {
+          console.log(`✅ User update: ${user.username}`, {
+            lat: user.latitude,
+            lng: user.longitude,
+            sharing: user.isLocationSharing
+          });
+          onUpdate(user);
+        },
+        error: (error) => {
+          console.error('❌ User updates subscription error:', error);
+        },
+      });
+
+      this.subscriptions.push(sub);
+    } catch (error) {
+      console.error('Error setting up user updates subscription:', error);
+    }
+  }
+
+  // Subscribe to friend location updates (specific friends only)
   async subscribeFriendLocations(
     friendIds: string[],
     onUpdate: (friend: Schema['User']['type']) => void
   ) {
     try {
+      console.log(`🔵 Setting up location subscriptions for ${friendIds.length} friends`);
+
       const sub = client.models.User.onUpdate().subscribe({
         next: (user: Schema['User']['type']) => {
           if (friendIds.includes(user.id)) {
-            console.log(`Location update for friend ${user.id}:`, user);
+            console.log(`✅ Location update for friend ${user.username}:`, {
+              lat: user.latitude,
+              lng: user.longitude,
+              sharing: user.isLocationSharing
+            });
             onUpdate(user);
           }
         },
         error: (error) => {
-          console.error('Friend location subscription error:', error);
+          console.error('❌ Friend location subscription error:', error);
         },
       });
 
@@ -44,10 +77,11 @@ export class SubscriptionService {
   ) {
     try {
       const processedFriends = new Set<string>();
+      console.log(`🔵 Setting up new friendship subscription for user ${userId}`);
 
       const createSub = client.models.Friend.onCreate().subscribe({
         next: async (friendship: Schema['Friend']['type']) => {
-          console.log('New friendship created:', friendship);
+          console.log('✅ New friendship created:', friendship);
 
           if (friendship.userId === userId || friendship.friendId === userId) {
             const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
@@ -58,6 +92,7 @@ export class SubscriptionService {
             try {
               const friendData = await client.models.User.get({ id: friendId });
               if (friendData.data) {
+                console.log(`✅ Fetched new friend data:`, friendData.data.username);
                 onNewFriend(friendData.data);
               }
             } catch (error) {
@@ -65,7 +100,7 @@ export class SubscriptionService {
             }
           }
         },
-        error: (error) => console.error('New friendship subscription error:', error),
+        error: (error) => console.error('❌ New friendship subscription error:', error),
       });
 
       this.subscriptions.push(createSub);
@@ -74,12 +109,40 @@ export class SubscriptionService {
     }
   }
 
-  // Subscribe to friend requests
+  // Subscribe to friendship deletions
+  async subscribeFriendshipDeletions(
+    userId: string,
+    onFriendRemoved: (friendId: string) => void
+  ) {
+    try {
+      console.log(`🔵 Setting up friendship deletion subscription for user ${userId}`);
+
+      const deleteSub = client.models.Friend.onDelete().subscribe({
+        next: (friendship: Schema['Friend']['type']) => {
+          console.log('🗑️ Friendship deleted:', friendship);
+
+          if (friendship.userId === userId || friendship.friendId === userId) {
+            const friendId = friendship.userId === userId ? friendship.friendId : friendship.userId;
+            console.log(`✅ Removing friend ${friendId}`);
+            onFriendRemoved(friendId);
+          }
+        },
+        error: (error) => console.error('❌ Friendship deletion subscription error:', error),
+      });
+
+      this.subscriptions.push(deleteSub);
+    } catch (error) {
+      console.error('Error setting up friendship deletion subscriptions:', error);
+    }
+  }
+
+  // Subscribe to friend requests - ALL EVENTS
   async subscribeFriendRequests(
     userId: string,
     onUpdate: (requests: Schema['FriendRequest']['type'][]) => void
   ) {
     try {
+      console.log('🔵 Setting up friend requests subscription for user:', userId);
       const allRequests = new Map<string, Schema['FriendRequest']['type']>();
 
       // Load initial requests
@@ -92,52 +155,57 @@ export class SubscriptionService {
         },
       });
 
+      console.log('📥 Initial requests loaded:', initialRequests.data?.length || 0);
       initialRequests.data?.forEach((req) => {
-        if (req.status === 'PENDING') allRequests.set(req.id, req);
+        if (req.status === 'PENDING') {
+          allRequests.set(req.id, req);
+          console.log('  - Pending request:', req.senderUsername, '->', req.receiverUsername);
+        }
       });
       onUpdate(Array.from(allRequests.values()));
 
-      // Subscribe to NEW requests
+      // Subscribe to CREATE
       const createSub = client.models.FriendRequest.onCreate().subscribe({
         next: (request: Schema['FriendRequest']['type']) => {
           if (
             (request.receiverId === userId || request.senderId === userId) &&
             request.status === 'PENDING'
           ) {
-            console.log('New friend request:', request);
+            console.log('✅ New friend request created:', request.senderUsername, '->', request.receiverUsername);
             allRequests.set(request.id, request);
             onUpdate(Array.from(allRequests.values()));
           }
         },
-        error: (error) => console.error('Create request subscription error:', error),
+        error: (error) => console.error('❌ Create request subscription error:', error),
       });
 
-      // Subscribe to UPDATED requests
+      // Subscribe to UPDATE
       const updateSub = client.models.FriendRequest.onUpdate().subscribe({
         next: (request: Schema['FriendRequest']['type']) => {
           if (request.receiverId === userId || request.senderId === userId) {
-            console.log('Friend request updated:', request);
-            if (request.status === 'PENDING') {
-              allRequests.set(request.id, request);
-            } else {
+            console.log('✅ Friend request updated:', request.id, 'Status:', request.status);
+            if (request.status !== 'PENDING') {
+              console.log('  -> Removing from pending (status changed to', request.status + ')');
               allRequests.delete(request.id);
+            } else {
+              allRequests.set(request.id, request);
             }
             onUpdate(Array.from(allRequests.values()));
           }
         },
-        error: (error) => console.error('Update request subscription error:', error),
+        error: (error) => console.error('❌ Update request subscription error:', error),
       });
 
-      // Subscribe to DELETED requests
+      // Subscribe to DELETE
       const deleteSub = client.models.FriendRequest.onDelete().subscribe({
         next: (request: Schema['FriendRequest']['type']) => {
           if (request.receiverId === userId || request.senderId === userId) {
-            console.log('Friend request deleted:', request);
+            console.log('✅ Friend request deleted:', request.id);
             allRequests.delete(request.id);
             onUpdate(Array.from(allRequests.values()));
           }
         },
-        error: (error) => console.error('Delete request subscription error:', error),
+        error: (error) => console.error('❌ Delete request subscription error:', error),
       });
 
       this.subscriptions.push(createSub, updateSub, deleteSub);
@@ -146,12 +214,13 @@ export class SubscriptionService {
     }
   }
 
-  // Subscribe to friendships
+  // Subscribe to friendships - CREATE AND DELETE
   async subscribeFriendships(
     userId: string,
     onUpdate: (friends: Schema['Friend']['type'][]) => void
   ) {
     try {
+      console.log('🔵 Setting up friendships subscription for user:', userId);
       const allFriendships = new Map<string, Schema['Friend']['type']>();
 
       // Load initial friendships
@@ -164,33 +233,34 @@ export class SubscriptionService {
         },
       });
 
+      console.log('📥 Initial friendships loaded:', initialFriendships.data?.length || 0);
       initialFriendships.data?.forEach((friendship) => {
         allFriendships.set(friendship.id, friendship);
       });
       onUpdate(Array.from(allFriendships.values()));
 
-      // Subscribe to NEW friendships
+      // Subscribe to CREATE
       const createSub = client.models.Friend.onCreate().subscribe({
         next: (friendship: Schema['Friend']['type']) => {
           if (friendship.userId === userId || friendship.friendId === userId) {
-            console.log('Friendship created:', friendship);
+            console.log('✅ Friendship created:', friendship.userUsername, '<->', friendship.friendUsername);
             allFriendships.set(friendship.id, friendship);
             onUpdate(Array.from(allFriendships.values()));
           }
         },
-        error: (error) => console.error('Create friendship subscription error:', error),
+        error: (error) => console.error('❌ Create friendship subscription error:', error),
       });
 
-      // Subscribe to DELETED friendships
+      // Subscribe to DELETE
       const deleteSub = client.models.Friend.onDelete().subscribe({
         next: (friendship: Schema['Friend']['type']) => {
           if (friendship.userId === userId || friendship.friendId === userId) {
-            console.log('Friendship deleted:', friendship);
+            console.log('✅ Friendship deleted:', friendship.userUsername, '<->', friendship.friendUsername);
             allFriendships.delete(friendship.id);
             onUpdate(Array.from(allFriendships.values()));
           }
         },
-        error: (error) => console.error('Delete friendship subscription error:', error),
+        error: (error) => console.error('❌ Delete friendship subscription error:', error),
       });
 
       this.subscriptions.push(createSub, deleteSub);
@@ -205,14 +275,14 @@ export class SubscriptionService {
     onUpdate: (user: Schema['User']['type']) => void
   ) {
     try {
-      const sub = client.models.User.onUpdate({
-        filter: { id: { eq: userId } },
-      }).subscribe({
+      const sub = client.models.User.onUpdate().subscribe({
         next: (user: Schema['User']['type']) => {
-          console.log('User settings updated:', user);
-          onUpdate(user);
+          if (user.id === userId) {
+            console.log('✅ User settings updated:', user);
+            onUpdate(user);
+          }
         },
-        error: (error) => console.error('User settings subscription error:', error),
+        error: (error) => console.error('❌ User settings subscription error:', error),
       });
 
       this.subscriptions.push(sub);
@@ -223,7 +293,7 @@ export class SubscriptionService {
 
   // Unsubscribe from all subscriptions
   unsubscribeAll() {
-    console.log(`Unsubscribing from ${this.subscriptions.length} subscriptions`);
+    console.log(`🔴 Unsubscribing from ${this.subscriptions.length} subscriptions`);
     this.subscriptions.forEach((sub) => {
       if (sub && typeof sub.unsubscribe === 'function') sub.unsubscribe();
     });

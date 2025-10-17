@@ -1,66 +1,111 @@
 // amplify/functions/accept-friend-request/handler.ts
 import type { Schema } from '../../data/resource';
-import type { AppSyncIdentityCognito } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
 export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = async (event) => {
+  console.log('🔵 Lambda - Accept Friend Request Started');
+  console.log('Full event:', JSON.stringify(event, null, 2));
 
-  // Narrow the type
   const { requestId } = event.arguments;
-  const identity = event.identity as AppSyncIdentityCognito | undefined;
-  const userId = identity?.sub;
 
-  if (!userId) {
-    return { success: false, message: 'Missing userId'};
+  // Try multiple ways to get userId
+  let userId: string | undefined;
+
+  // Method 1: From identity.sub
+  if (event.identity && 'sub' in event.identity) {
+    userId = event.identity.sub;
   }
 
-  // We'll use AWS SDK v3 directly to access DynamoDB
-  // This is included in Lambda runtime, no install needed!
+  // Method 2: From identity.username (Cognito)
+  if (!userId && event.identity && 'username' in event.identity) {
+    userId = event.identity.username;
+  }
+
+  // Method 3: From identity.claims.sub
+  if (!userId && event.identity && 'claims' in event.identity) {
+    const claims = event.identity.claims as any;
+    userId = claims?.sub;
+  }
+
+  console.log('Extracted userId:', userId);
+  console.log('Request ID:', requestId);
+
+  if (!userId) {
+    console.error('❌ Could not extract userId from identity');
+    console.error('Identity object:', JSON.stringify(event.identity, null, 2));
+    return {
+      success: false,
+      message: 'Authentication error: Could not determine user identity'
+    };
+  }
+
+  if (!requestId) {
+    return {
+      success: false,
+      message: 'Missing request ID'
+    };
+  }
 
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);
 
   try {
-    // Get table names from environment variables (Amplify provides these)
     const userTable = process.env.USER_TABLE_NAME;
     const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME;
     const friendTable = process.env.FRIEND_TABLE_NAME;
 
     if (!userTable || !friendRequestTable || !friendTable) {
-      throw new Error('Table name not configured');
+      throw new Error('Table names not configured');
     }
 
-    console.log(`Accepting friend request ${requestId} for user ${userId}`);
+    console.log('Using tables:', { userTable, friendRequestTable, friendTable });
 
     // 1. Get the friend request
+    console.log('📥 Fetching friend request...');
     const requestResult = await ddbDocClient.send(new GetCommand({
       TableName: friendRequestTable,
       Key: { id: requestId }
     }));
 
     const request = requestResult.Item;
-    if (!request || request.receiverId !== userId) {
+    console.log('Friend request:', request);
+
+    if (!request) {
       return {
         success: false,
-        message: 'Request not found or unauthorized',
+        message: 'Request not found',
       };
     }
 
-    // 2. Update request status
+    if (request.receiverId !== userId) {
+      console.log('❌ Unauthorized: userId does not match receiverId');
+      return {
+        success: false,
+        message: 'Unauthorized: You are not the recipient of this request',
+      };
+    }
+
+    // 2. Update request status to ACCEPTED
+    console.log('📝 Updating request status to ACCEPTED...');
     await ddbDocClient.send(new UpdateCommand({
       TableName: friendRequestTable,
       Key: { id: requestId },
-      UpdateExpression: 'SET #status = :status',
+      UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
       ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: { ':status': 'ACCEPTED' }
+      ExpressionAttributeValues: {
+        ':status': 'ACCEPTED',
+        ':updatedAt': new Date().toISOString()
+      }
     }));
 
     // 3. Create Friend record
+    console.log('👥 Creating friendship record...');
+    const friendshipId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     await ddbDocClient.send(new PutCommand({
       TableName: friendTable,
       Item: {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: friendshipId,
         userId: request.senderId,
         friendId: request.receiverId,
         userUsername: request.senderUsername,
@@ -70,8 +115,10 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
       }
     }));
 
+    console.log('✅ Friendship record created:', friendshipId);
+
     // 4. Update BOTH users' friends arrays
-    // Get current friends arrays
+    console.log('📝 Updating users friends arrays...');
     const [senderResult, receiverResult] = await Promise.all([
       ddbDocClient.send(new GetCommand({
         TableName: userTable,
@@ -86,6 +133,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
     const senderFriends = senderResult.Item?.friends || [];
     const receiverFriends = receiverResult.Item?.friends || [];
 
+    console.log('Sender friends before:', senderFriends);
+    console.log('Receiver friends before:', receiverFriends);
+
     // Add to arrays if not present
     if (!senderFriends.includes(request.receiverId)) {
       senderFriends.push(request.receiverId);
@@ -93,6 +143,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
     if (!receiverFriends.includes(request.senderId)) {
       receiverFriends.push(request.senderId);
     }
+
+    console.log('Sender friends after:', senderFriends);
+    console.log('Receiver friends after:', receiverFriends);
 
     // Update both users
     await Promise.all([
@@ -116,13 +169,16 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
       }))
     ]);
 
+    console.log('✅ Users updated with new friend');
+
     // 5. Delete the friend request
+    console.log('🗑️ Deleting friend request...');
     await ddbDocClient.send(new DeleteCommand({
       TableName: friendRequestTable,
       Key: { id: requestId }
     }));
 
-    console.log(`Successfully accepted friend request ${requestId}`);
+    console.log('✅ Successfully accepted friend request');
     console.log(`Users ${request.senderId} and ${request.receiverId} are now friends`);
 
     return {
@@ -131,10 +187,10 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
     };
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ Error:', error);
     return {
       success: false,
-      message: 'An error occurred',
+      message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 };

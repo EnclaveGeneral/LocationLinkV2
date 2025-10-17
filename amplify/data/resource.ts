@@ -4,7 +4,6 @@ import { acceptFriendRequestFunction } from '../functions/accept-friend-request/
 import { removeFriendFunction } from '../functions/remove-friend/resource';
 
 const schema = a.schema({
-  // Keep your existing models exactly as they are
   User: a
     .model({
       username: a.string().required(),
@@ -67,7 +66,7 @@ const schema = a.schema({
       index('receiverId'),
     ]),
 
-  // NEW: Custom mutations that will be handled by Lambda functions
+  // Keep your Lambda mutations
   acceptFriendRequestLambda: a
     .mutation()
     .arguments({

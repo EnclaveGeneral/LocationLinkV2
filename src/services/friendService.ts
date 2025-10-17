@@ -178,5 +178,16 @@ export const friendService = {
     });
 
     return requests;
-  }
+  },
+
+  async refreshFriendData(userId: string) {
+    const [friends, pendingRequests, sentRequests] = await Promise.all([
+      friendService.getFriends(userId),
+      friendService.getPendingRequests(userId),
+      friendService.getSentRequests(userId),
+    ]);
+
+    return { friends, pendingRequests, sentRequests };
+  },
+
 };
