@@ -14,11 +14,13 @@ import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { LocationService } from '../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
+import CustomModal from '@/components/modal';
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [isLocationSharing, setIsLocationSharing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -64,27 +66,14 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const locationService = LocationService.getInstance();
-              await locationService.stopLocationTracking();
-              await authService.signOut();
-              router.replace('/signin');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to sign out');
-            }
-          },
-        },
-      ]
-    );
+    try {
+      const locationService = LocationService.getInstance();
+      await locationService.stopLocationTracking();
+      await authService.signOut();
+      router.replace('/signin');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign out');
+    }
   };
 
   return (
@@ -112,9 +101,18 @@ export default function ProfileScreen() {
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+      <TouchableOpacity style={styles.signOutButton} onPress={() => {setModalVisible(true)}}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
+
+      <CustomModal
+        visible={modalVisible}
+        title={'Logout Confirmation'}
+        message={'Are you sure you want to log out?'}
+        type={'warning'}
+        onConfirm={() => handleSignOut()}
+        onClose={() => setModalVisible(false)}
+      />
     </ScrollView>
   );
 }

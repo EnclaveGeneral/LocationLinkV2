@@ -10,11 +10,13 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
 import { client } from '../services/amplifyConfig';
 import { Ionicons } from '@expo/vector-icons';
+import CustomModal from '@/components/modal';
 
 export default function RequestsScreen() {
   const [searchUsername, setSearchUsername] = useState('');
@@ -24,6 +26,8 @@ export default function RequestsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSent, setShowSent] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const subscriptionsRef = useRef<any[]>([]);
 
   useEffect(() => {
@@ -128,6 +132,7 @@ export default function RequestsScreen() {
   };
 
   const acceptRequest = async (request: any) => {
+
     try {
       await friendService.acceptFriendRequest(request.id);
       Alert.alert('Success', `You are now friends with ${request.senderUsername}!`);
@@ -173,7 +178,10 @@ export default function RequestsScreen() {
       <View style={styles.requestButtons}>
         <TouchableOpacity
           style={[styles.button, styles.acceptButton]}
-          onPress={() => acceptRequest(item)}
+          onPress={() => {
+            selectedRequest(item);
+            setModalVisible(true);
+          }}
         >
           <Ionicons name="checkmark" size={20} color="white" />
         </TouchableOpacity>
@@ -279,6 +287,19 @@ export default function RequestsScreen() {
             </Text>
           </View>
         }
+      />
+      <CustomModal
+        visible={modalVisible}
+        title={'Warning'}
+        message={'Are you sure you want to accept this friend request?'}
+        type={'warning'}
+        onClose={() => setModalVisible(false)}
+        onConfirm={() => {
+          if (selectedRequest) {
+            acceptRequest(selectedRequest);
+            setModalVisible(false);
+          }
+        }}
       />
     </View>
   );

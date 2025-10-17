@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
@@ -15,6 +16,8 @@ import { authService } from '../services/authService';
 import { friendService } from '../services/friendService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { Ionicons } from '@expo/vector-icons';
+
+const { height, width } = Dimensions.get('screen');
 
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
@@ -282,28 +285,28 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     position: 'absolute',
-    top: 50,
-    left: 10,
-    right: 10,
+    top: width * 0.04,
+    left: width * 0.02,
+    right: width * 0.02,
     zIndex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: width * 0.02,
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'white',
-    borderRadius: 25,
-    paddingHorizontal: 15,
+    borderRadius: width * 0.04,
+    paddingHorizontal: width * 0.02,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: width * 0.02,
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: width * 0.035,
     elevation: 5,
   },
   searchInput: {
@@ -315,8 +318,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'white',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingHorizontal: width * 0.02,
+    paddingVertical: width * 0.03,
     borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: {

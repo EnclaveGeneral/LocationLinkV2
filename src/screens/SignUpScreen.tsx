@@ -104,7 +104,7 @@ export default function SignUpScreen() {
     setTopLoading(true);
     try {
       await authService.signUp(email, password, username, phoneNumber);
-      showModal("Registration Suceed", "Please select the method for MFA Authentication Next", "success");
+      showModal("Registration Suceed", "We will be redirecting you to authenticate next...", "success");
 
       // Transition to the next page after the user has see the pop up modal message.
       setTimeout(() => {
