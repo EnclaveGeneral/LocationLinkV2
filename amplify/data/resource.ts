@@ -66,6 +66,20 @@ const schema = a.schema({
       index('receiverId'),
     ]),
 
+  WebSocketConnection: a
+    .model({
+      connectionId: a.string().required(),
+      userId: a.id().required(),
+      connectedAt: a.datetime().required(),
+      lastPingAt: a.datetime(),
+    })
+    .authorization((allow) => [
+      allow.authenticated()
+    ])
+    .secondaryIndexes((index) => [
+      index('userId')
+    ]),
+
   // Keep your Lambda mutations
   acceptFriendRequestLambda: a
     .mutation()

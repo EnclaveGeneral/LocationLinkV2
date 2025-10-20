@@ -1,5 +1,6 @@
 // src/contexts/SubscriptionContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { WebSocketService } from '../services/websocketService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
@@ -7,7 +8,7 @@ import type { Schema } from '../../amplify/data/resource';
 
 type User = Schema['User']['type'];
 type FriendRequest = Schema['FriendRequest']['type'];
-type Friend = Schema['Friend']['type'];
+// type Friend = Schema['Friend']['type'];
 
 interface SubscriptionContextType {
   pendingRequests: FriendRequest[];
@@ -16,6 +17,7 @@ interface SubscriptionContextType {
   friendsOnline: number;
   friendsMap: Map<string, User>;
   forceReload: () => Promise<void>;
+  isWebSocketConnected: boolean// Add websocket port access
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType>({
@@ -25,6 +27,7 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
   friendsOnline: 0,
   friendsMap: new Map(),
   forceReload: async () => {},
+  isWebSocketConnected: false,
 });
 
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -33,6 +36,8 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [friends, setFriends] = useState<User[]>([]);
   const [friendsMap, setFriendsMap] = useState<Map<string, User>>(new Map());
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
+  // Add new websockeets state for use
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
   const updateFriendsState = (newFriends: User[]) => {
     const validFriends = newFriends.filter((f): f is User => f !== null && f !== undefined);
@@ -62,6 +67,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return;
       }
 
+      // Load current friends
       const friendships = await dataService.listFriends({
         or: [
           { userId: { eq: user.userId } },
@@ -82,6 +88,21 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       );
 
       updateFriendsState(friendsData.filter((f): f is User => f !== null));
+
+      // Load friend requests
+      const requests = await dataService.listFriendRequests({
+        or: [
+          { receiverId: { eq: user.userId } },
+          { senderId: { eq: user.userId } },
+        ],
+      })
+
+      const received = requests.filter( r => r.receiverId === user.userId && r.status === 'PENDING');
+      const sent = requests.filter( r => r.senderId === user.userId && r.status === 'PENDING');
+
+      setPendingRequests(received);
+      setSentRequests(sent);
+
       console.log('✅ Force reload complete');
     } catch (error) {
       console.error('❌ Force reload error:', error);
@@ -90,10 +111,10 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   useEffect(() => {
     console.log('🔵 SubscriptionContext - Initializing...');
-    let subscriptionService: SubscriptionService | null = null;
+    let wsService: WebSocketService | null = null;
     let currentUserId: string | null = null;
 
-    const setupSubscriptions = async () => {
+    const setupWebSocket = async () => {
       try {
         const user = await authService.getCurrentUser();
         if (!user) {
@@ -103,113 +124,94 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         console.log('✅ User found:', user.userId);
         currentUserId = user.userId;
-        subscriptionService = SubscriptionService.getInstance();
 
-        // Load initial friends
-        const initialFriendships = await dataService.listFriends({
-          or: [
-            { userId: { eq: user.userId } },
-            { friendId: { eq: user.userId } },
-          ],
-        });
+        // Load initial set of data
+        await forceReload();
 
-        console.log('📥 Initial friendships loaded:', initialFriendships.length);
-        console.log('📥 Friendship details:', initialFriendships.map(f => ({
-          id: f.id,
-          userId: f.userId,
-          friendId: f.friendId,
-        })));
+        // Connect to WebSocket
+        wsService = WebSocketService.getInstance();
 
-        const friendIds = initialFriendships.map(f =>
-          f.userId === user.userId ? f.friendId : f.userId
-        );
+        // Set up event listeners.
+        wsService.on('connected', () => {
+          console.log('✅ WebSocket connected event');
+          setIsWebSocketConnected(true);
+        })
 
-        console.log('📥 Friend IDs to load:', friendIds);
+        wsService.on('disconnected', () => {
+          console.log('🔴 WebSocket disconnected event');
+          setIsWebSocketConnected(false);
+        })
 
-        const initialFriends = await Promise.all(
-          friendIds.map(id => dataService.getUser(id))
-        );
-
-        updateFriendsState(initialFriends.filter((f): f is User => f !== null));
-
-        // Subscribe to friend requests
-        console.log('🔵 Setting up friend requests subscription...');
-        await subscriptionService.subscribeFriendRequests(user.userId, (requests: FriendRequest[]) => {
-          console.log('📬 Friend requests subscription fired! Total:', requests.length);
-
-          const received = requests.filter(r => r.receiverId === user.userId);
-          const sent = requests.filter(r => r.senderId === user.userId);
-
-          console.log('  📨 Received:', received.length, '📤 Sent:', sent.length);
-
-          setPendingRequests(received);
-          setSentRequests(sent);
-        });
-
-        // Subscribe to friendships
-        console.log('🔵 Setting up friendships subscription...');
-        await subscriptionService.subscribeFriendships(user.userId, async (friendships: Friend[]) => {
-          console.log('👥 Friendships subscription fired! Total:', friendships.length);
-          console.log('👥 Friendship details:', friendships.map(f => ({
-            id: f.id,
-            userId: f.userId,
-            friendId: f.friendId,
-          })));
-
-          const currentFriendIds = friendships.map(f =>
-            f.userId === user.userId ? f.friendId : f.userId
-          );
-
-          console.log('  🔍 Extracted friend IDs:', currentFriendIds);
-
-          const updatedFriends = await Promise.all(
-            currentFriendIds.map(id => dataService.getUser(id))
-          );
-
-          console.log('  📥 Loaded friend data for:', updatedFriends.map(f => f?.username));
-
-          updateFriendsState(updatedFriends.filter((f): f is User => f !== null));
-        });
-
-        // Subscribe to user updates
-        console.log('🔵 Setting up user updates subscription...');
-        await subscriptionService.subscribeAllUserUpdates((updatedUser: User) => {
-          console.log('🔄 User update subscription fired for:', updatedUser.username);
+        wsService.on('userUpdate', (updatedUser: User) => {
+          console.log('🔄 Real-time user update:', updatedUser.username);
 
           setFriends(prev => {
             const index = prev.findIndex(f => f.id === updatedUser.id);
             if (index !== -1) {
-              console.log(`  ✅ Found friend in list, updating:`, {
+              console.log(`  ✅ Updating friend in list:`, {
                 username: updatedUser.username,
                 sharing: updatedUser.isLocationSharing,
+                lat: updatedUser.latitude,
+                lng: updatedUser.latitude,
               });
-
-              const newFriends = [...prev];
-              newFriends[index] = { ...updatedUser };
-
-              updateFriendsState(newFriends);
-
-              return newFriends;
             } else {
-              console.log(`  ⚠️ User ${updatedUser.username} not in friends list, ignoring`);
+              console.log(` ⚠️ User ${updatedUser.username} not in friends list`);
             }
             return prev;
           });
         });
 
-        console.log('✅ All subscriptions setup complete');
+        wsService.on('friendAdded', async (data: any) => {
+          console.log('👥 Friend added via WebSocket:', data);
+          await forceReload();
+        });
+
+        wsService.on('friendRemoved', async(data: any) => {
+          console.log('💔 Friend removed via WebSocket:', data.friendId);
+          setFriends(prev => prev.filter(f => f.id !== data.friendId && f.id !== data.userId));
+        });
+
+        wsService.on('friendRequestReceived', async (data: any) => {
+          console.log('📬 Friend request received via WebSocket:', data);
+          await forceReload();
+        })
+
+        wsService.on('friendRequestAccepted', async (data: any) => {
+          console.log('✅ Friend request accepted via WebSocket:', data);
+          await forceReload();
+        });
+
+        wsService.on('friendRequestDeleted', async (data: any) => {
+          console.log('🗑️ Friend request deleted via WebSocket:', data);
+          await forceReload();
+        });
+
+        wsService.on('error', (error: any) => {
+          console.error('❌ WebSocket error:', error);
+        });
+
+        wsService.on('maxReconnectAttemptsReached', () => {
+          console.error('❌ Max WebSocket reconnection attempts reached');
+          // You could show a UI notification here
+        });
+
+        // Connect
+        await wsService.connect(user.userId);
+
+        console.log('✅ WebSocket setup complete');
 
       } catch (error) {
-        console.error('❌ Error setting up subscriptions:', error);
+        console.error('❌ Error setting up WebSocket:', error);
+
       }
     };
 
-    setupSubscriptions();
+    setupWebSocket();
 
     return () => {
-      console.log('🔴 Cleaning up subscriptions for user:', currentUserId);
-      if (subscriptionService) {
-        subscriptionService.unsubscribeAll();
+      console.log('🔴 Cleaning up WebSocket for user:', currentUserId);
+      if (wsService) {
+        wsService.disconnect();
       }
     };
   }, []);
@@ -222,6 +224,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       friendsOnline,
       friendsMap,
       forceReload,
+      isWebSocketConnected,
     }}>
       {children}
     </SubscriptionContext.Provider>

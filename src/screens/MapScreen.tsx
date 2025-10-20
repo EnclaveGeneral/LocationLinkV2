@@ -15,6 +15,7 @@ import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
+import WebSocketIndicator from '../components/WebSocketIndicator';
 
 const { height, width } = Dimensions.get('screen');
 
