@@ -4,5 +4,5 @@ export const websocketConnectFunction = defineFunction({
   name: 'websocket-connect',
   entry: './handler.ts',
   timeoutSeconds: 30,
-  resourceGroupName: 'websocket',
+  resourceGroupName: 'data',
 });

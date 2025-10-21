@@ -135,10 +135,7 @@ export default function MapScreen() {
             onSubmitEditing={searchFriend}
           />
         </View>
-        <View style={styles.liveIndicator}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>Live</Text>
-        </View>
+        <WebSocketIndicator />
       </View>
 
       <MapView

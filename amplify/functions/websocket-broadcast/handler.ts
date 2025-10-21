@@ -1,6 +1,6 @@
 // amplify/functions/websocket-broadcast/handler.ts
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, DeleteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
@@ -15,6 +15,13 @@ export const handler = async (event: any) => {
   const friendTable = process.env.FRIEND_TABLE_NAME;
   const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME;
   const wsEndpoint = process.env.WEBSOCKET_ENDPOINT;
+
+  // Extra redundant type check, ensrue none of the table is Null() or Undefined ~ ~ ~ Nefer C6R1
+  if (!connectionsTable || !wsEndpoint || !userTable || !friendTable || !friendRequestTable) {
+    console.error('❌ Missing environment variables');
+    return;
+  }
+
 
   if (!connectionsTable || !wsEndpoint) {
     console.error('❌ Missing environment variables');
@@ -57,7 +64,7 @@ async function handleUserUpdate(
   apiGateway: ApiGatewayManagementApiClient,
   ddbDocClient: DynamoDBDocumentClient,
   connectionsTable: string,
-  friendTable: string
+  friendTable: string,
 ) {
   if (record.eventName !== 'MODIFY') return;
 

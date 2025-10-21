@@ -5,5 +5,5 @@ export const websocketDisconnectFunction = defineFunction({
   name: 'websocket-disconnect',
   entry: './handler.ts',
   timeoutSeconds: 30,
-  resourceGroupName: 'websocket',
+  resourceGroupName: 'data',
 });

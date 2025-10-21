@@ -5,5 +5,5 @@ export const websocketBroadcastFunction = defineFunction({
   name: 'websocket-broadcast',
   entry: './handler.ts',
   timeoutSeconds: 60,
-  resourceGroupName: 'websocket',
+  resourceGroupName: 'data',
 });

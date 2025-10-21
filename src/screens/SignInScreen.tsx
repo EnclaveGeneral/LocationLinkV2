@@ -11,6 +11,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import CustomModal from "@/components/modal";
@@ -57,7 +58,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container}>
       <Text style={styles.title}>Sign In</Text>
       <Image
         style={styles.logo}
@@ -154,7 +155,7 @@ export default function SignInScreen() {
         type={modalContent.type}
         onClose={() => setModalVisible(false)}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -187,7 +188,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: width * 0.002,
-    borderColor: "#ddd",
+    borderColor: "#A910F5",
+    color: "#A910F5",
     padding: width * 0.04,
     marginVertical: width * 0.015,
     borderRadius: 8,

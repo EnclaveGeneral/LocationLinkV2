@@ -1,5 +1,6 @@
 // src/services/authService.ts
 import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes, resendSignUpCode } from 'aws-amplify/auth';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export const authService = {
   async signUp(email: string, password: string, username: string, phoneNumber: string) {
@@ -12,7 +13,12 @@ export const authService = {
 
     // Add phone number if provided in a valid format
     if (phoneNumber && phoneNumber.trim()) {
-      userAttributes.phone_number = phoneNumber;
+      const parsedNumber = parsePhoneNumberFromString(phoneNumber, 'US');
+      if (parsedNumber && parsedNumber.isValid()) {
+        userAttributes.phone_number = parsedNumber.number;
+      } else {
+        throw new Error('Invalid phone number format. Only a valid US phone number is accepted.');
+      }
     }
 
     const result = await signUp({

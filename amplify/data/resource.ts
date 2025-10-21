@@ -13,6 +13,8 @@ const schema = a.schema({
       longitude: a.float(),
       locationUpdatedAt: a.datetime(),
       isLocationSharing: a.boolean().default(true),
+      isOnline: a.boolean().default(false),
+      lastSeenAt: a.datetime(),
       friends: a.string().array(),
     })
     .authorization((allow) => [

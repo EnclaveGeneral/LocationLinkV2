@@ -270,7 +270,13 @@ export default function SignUpScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container}>
-      <ScrollView>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          paddingBottom: width * 0.1
+        }}
+      >
 
         <Image
           style={styles.logo}
@@ -353,7 +359,7 @@ export default function SignUpScreen() {
         </View>
 
         <TouchableOpacity
-          style={[topLoading && styles.buttonDisabled]}
+          style={styles.firstBtn}
           onPress={handleSignUp}
           disabled={topLoading || !filledCorrectly()}
         >
@@ -447,7 +453,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: width * 0.002,
-    borderColor: "#ddd",
+    borderColor: "#A910F5",
+    color: "#A910F5",
     padding: width * 0.04,
     marginVertical: width * 0.015,
     borderRadius: 8,
@@ -476,16 +483,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: width * 0.05,
   },
+  firstBtn: {
+    marginTop: width * 0.10,
+  },
   confirmButton: {
     backgroundColor: '#32af16ff',
   },
-
-  resendButton: {
-    backgroundColor: '#A910F5',
-  },
-
   buttonDisabled: {
     backgroundColor: '#a8a4a4ef',
+  },
+  resendButton: {
+    backgroundColor: '#ec1c1cff',
   },
   buttonText: {
     color: "white",

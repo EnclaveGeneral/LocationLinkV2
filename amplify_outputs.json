@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "us-west-2_sUhv14RaE",
+    "user_pool_id": "us-west-2_0QzyKPOWF",
     "aws_region": "us-west-2",
-    "user_pool_client_id": "h4o12iv25k6g97kk6miaqsn1e",
-    "identity_pool_id": "us-west-2:222d737c-052f-419b-85ea-549b170b7223",
+    "user_pool_client_id": "6afusioh9rtbmnfpndegc7evgo",
+    "identity_pool_id": "us-west-2:fbf6119b-ad06-41d2-99c5-4411e54624cb",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email"
@@ -28,7 +28,7 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://kzwjuf3mbngybfzn5hlp5y5pau.appsync-api.us-west-2.amazonaws.com/graphql",
+    "url": "https://qhpfjc4dirfphddbihwkt4tuhe.appsync-api.us-west-2.amazonaws.com/graphql",
     "aws_region": "us-west-2",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
@@ -93,6 +93,20 @@
               "name": "isLocationSharing",
               "isArray": false,
               "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "isOnline": {
+              "name": "isOnline",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "lastSeenAt": {
+              "name": "lastSeenAt",
+              "isArray": false,
+              "type": "AWSDateTime",
               "isRequired": false,
               "attributes": []
             },
@@ -485,6 +499,101 @@
                     "ownerField": "receiverId",
                     "allow": "owner",
                     "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "WebSocketConnection": {
+          "name": "WebSocketConnection",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "connectionId": {
+              "name": "connectionId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "userId": {
+              "name": "userId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "connectedAt": {
+              "name": "connectedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "lastPingAt": {
+              "name": "lastPingAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WebSocketConnections",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "webSocketConnectionsByUserId",
+                "queryField": "listWebSocketConnectionByUserId",
+                "fields": [
+                  "userId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",

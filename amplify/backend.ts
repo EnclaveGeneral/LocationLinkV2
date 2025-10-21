@@ -7,13 +7,13 @@ import { removeFriendFunction } from '../amplify/functions/remove-friend/resourc
 import { websocketConnectFunction } from './functions/websocket-connect/resource';
 import { websocketDisconnectFunction } from './functions/websocket-disconnect/resource';
 import { websocketMessageFunction } from './functions/websocket-message/resource';
-import { websocketBroadcastFunction } from './functions/websockeet-broadcast/resource';
+import { websocketBroadcastFunction } from './functions/websocket-broadcast/resource';
 import { Stack } from 'aws-cdk-lib';
-import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';  // Grant DynamoDB permissions using IAM policies
+import { PolicyStatement, Effect, ServicePrincipal } from 'aws-cdk-lib/aws-iam';  // Grant DynamoDB permissions using IAM policies
 import { CfnApi, CfnRoute, CfnIntegration, CfnStage, CfnDeployment } from 'aws-cdk-lib/aws-apigatewayv2';
 import { StartingPosition } from 'aws-cdk-lib/aws-lambda';
-import { StreamViewType } from 'aws-cdk-lib/aws-dynamodb';
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { CfnOutput } from 'aws-cdk-lib';
 
 const backend = defineBackend({
   auth,
@@ -72,24 +72,31 @@ const messageIntegration = new CfnIntegration(stack, 'MessageIntegration', {
   integrationUri: `arn:aws:apigateway:${stack.region}:lambda:path/2015-03-31/functions/${backend.websocketMessageFunction.resources.lambda.functionArn}/invocations`,
 });
 
+
 // Create routes
-new CfnRoute(stack, 'ConnectRoute', {
+const connectRoute = new CfnRoute(stack, 'ConnectRoute', {
   apiId: webSocketApi.ref,
   routeKey: '$connect',
   authorizationType: 'NONE',
   target: `integrations/${connectIntegration.ref}`,
 });
 
-new CfnRoute(stack, 'DisconnectRoute', {
+const disconnectRoute = new CfnRoute(stack, 'DisconnectRoute', {
   apiId: webSocketApi.ref,
   routeKey: '$disconnect',
   target: `integrations/${disconnectIntegration.ref}`,
 });
 
-new CfnRoute(stack, 'DefaultRoute', {
+const defaultRoute = new CfnRoute(stack, 'DefaultRoute', {
   apiId: webSocketApi.ref,
   routeKey: '$default',
   target: `integrations/${messageIntegration.ref}`,
+});
+
+const stage = new CfnStage(stack, 'WebSocketStage', {
+  apiId: webSocketApi.ref,
+  stageName: 'production',
+  autoDeploy: true,
 });
 
 // Create deployment and stage
@@ -97,34 +104,35 @@ const deployment = new CfnDeployment(stack, 'WebSocketDeployment', {
   apiId: webSocketApi.ref,
 });
 
-const stage = new CfnStage(stack, 'WebSocketStage', {
-  apiId: webSocketApi.ref,
-  stageName: 'production',
-  deploymentId: deployment.ref,
-  autoDeploy: true,
-});
+// Add explicit Dependency to specify the route
+deployment.addDependency(connectRoute);
+deployment.addDependency(disconnectRoute);
+deployment.addDependency(defaultRoute);
+
 
 const wsEndpoint = `https://${webSocketApi.ref}.execute-api.${stack.region}.amazonaws.com/${stage.stageName}`;
 
 // Grant Lambda permissions to WebSocket API
 backend.websocketConnectFunction.resources.lambda.addPermission('WebSocketConnectPermission', {
-  principal: new (require('aws-cdk-lib/aws-iam').ServicePrincipal)('apigateway.amazonaws.com'),
+  principal: new ServicePrincipal('apigateway.amazonaws.com'),
   sourceArn: `arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`,
 });
 
 backend.websocketDisconnectFunction.resources.lambda.addPermission('WebSocketDisconnectPermission', {
-  principal: new (require('aws-cdk-lib/aws-iam').ServicePrincipal)('apigateway.amazonaws.com'),
+  principal: new ServicePrincipal('apigateway.amazonaws.com'),
   sourceArn: `arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`,
 });
 
 backend.websocketMessageFunction.resources.lambda.addPermission('WebSocketMessagePermission', {
-  principal: new (require('aws-cdk-lib/aws-iam').ServicePrincipal)('apigateway.amazonaws.com'),
+  principal: new ServicePrincipal('apigateway.amazonaws.com'),
   sourceArn: `arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`,
 });
 
 // Add environment variables to WebSocket functions
 backend.websocketConnectFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
+backend.websocketConnectFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
 backend.websocketDisconnectFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
+backend.websocketDisconnectFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
 backend.websocketMessageFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketBroadcastFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_TABLE_NAME', friendTableName!);
@@ -280,7 +288,7 @@ backend.removeFriendFunction.resources.lambda.addToRolePolicy(
 );
 
 // Output WebSocket URL
-new (require('aws-cdk-lib').CfnOutput)(stack, 'WebSocketURL', {
+new CfnOutput(stack, 'WebSocketURL', {
   value: wsEndpoint,
   description: 'WebSocket API endpoint URL',
 });
