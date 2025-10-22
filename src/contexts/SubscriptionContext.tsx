@@ -110,7 +110,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   useEffect(() => {
-    console.log('🔵 SubscriptionContext - Initializing...');
+    console.log('🔵 SubscriptionContext - Initializing with WebSocket...');
     let wsService: WebSocketService | null = null;
     let currentUserId: string | null = null;
 
@@ -154,6 +154,11 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 lat: updatedUser.latitude,
                 lng: updatedUser.latitude,
               });
+
+              const newFriends = [...prev];
+              newFriends[index] = updatedUser;
+              updateFriendsState(newFriends);
+              return newFriends;
             } else {
               console.log(` ⚠️ User ${updatedUser.username} not in friends list`);
             }
@@ -163,27 +168,112 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         wsService.on('friendAdded', async (data: any) => {
           console.log('👥 Friend added via WebSocket:', data);
-          await forceReload();
+
+          // Determine which friend was added to current user
+          const newFriendId = data.userId === currentUserId ? data.friendId : data.userId;
+
+          // Fetch the new friend's data
+          const newFriend = await dataService.getUser(newFriendId);
+
+          if (newFriend) {
+            console.log('✅ Adding friend to list:', newFriend.username);
+            setFriends(prev => {
+              // Check if already exists (shouldn't, but just in case)
+              if (prev.some(f => f.id === newFriend.id)) {
+                return prev;
+              }
+              const newFriends = [...prev, newFriend];
+              updateFriendsState(newFriends);
+              return newFriends;
+            });
+          }
+
+          // Also reload requests to clear any pending requests between these users
+          const requests = await dataService.listFriendRequests({
+            or: [
+              { receiverId: { eq: currentUserId } },
+              { senderId: { eq: currentUserId } },
+            ],
+          });
+
+          const received = requests.filter(r => r.receiverId === currentUserId && r.status === 'PENDING');
+          const sent = requests.filter(r => r.senderId === currentUserId && r.status === 'PENDING');
+
+          setPendingRequests(received);
+          setSentRequests(sent);
         });
 
         wsService.on('friendRemoved', async(data: any) => {
+
           console.log('💔 Friend removed via WebSocket:', data.friendId);
-          setFriends(prev => prev.filter(f => f.id !== data.friendId && f.id !== data.userId));
+
+          // Determine which friend was removed
+          const removedFriendId = data.userId === currentUserId ? data.friendId: data.userId;
+
+          console.log('🗑️ Removing friend from list:', removedFriendId);
+
+          setFriends(prev => {
+            const newFriends = prev.filter(f => f.id !== removedFriendId);
+            console.log(`  ✅ Removed. Friend count: ${prev.length} → ${newFriends.length}`);
+            updateFriendsState(newFriends);
+            return newFriends;
+          });
         });
 
         wsService.on('friendRequestReceived', async (data: any) => {
           console.log('📬 Friend request received via WebSocket:', data);
-          await forceReload();
-        })
+
+          const receivedRequests = await dataService.listFriendRequests({
+            receiverId: { eq: currentUserId },
+            status: { eq: 'PENDING' }
+          });
+
+          console.log(`  ✅ Updated pending requests: ${receivedRequests.length}`);
+          setPendingRequests(receivedRequests);
+        });
 
         wsService.on('friendRequestAccepted', async (data: any) => {
           console.log('✅ Friend request accepted via WebSocket:', data);
-          await forceReload();
+
+          // Remove from sent requests
+          setSentRequests(prev => {
+            const newSent = prev.filter(r => r.id !== data.requestId);
+            console.log(`  ✅ Removed from sent. Count: ${prev.length} → ${newSent.length}`);
+            return newSent;
+          });
+
+          // Fetch new friend's data to friends list
+          const newFriend = await dataService.getUser(data.receiverId);
+
+          if (newFriend) {
+            console.log('✅ Adding newly accepted friend to list:', newFriend.username);
+            setFriends(prev => {
+              if (prev.some(f => f.id === newFriend.id)) {
+                return prev;
+              }
+              const newFriends = [...prev, newFriend];
+              updateFriendsState(newFriends);
+              return newFriends;
+            });
+          }
         });
 
+        // Friend Request Deleted - Direct State Update
         wsService.on('friendRequestDeleted', async (data: any) => {
           console.log('🗑️ Friend request deleted via WebSocket:', data);
-          await forceReload();
+
+          // Remove request from both user sent and user received
+          setPendingRequests(prev => {
+            const newPending = prev.filter(r => r.id !== data.requestId);
+            console.log(`  ✅ Removed from pending. Count: ${prev.length} → ${newPending.length}`);
+            return newPending;
+          });
+
+          setSentRequests(prev => {
+            const newSent = prev.filter(r => r.id !== data.requestId);
+            console.log(`  ✅ Removed from sent. Count: ${prev.length} → ${newSent.length}`);
+            return newSent;
+          });
         });
 
         wsService.on('error', (error: any) => {

@@ -14,7 +14,7 @@ export class WebSocketService {
   private isIntentionalClose = false;
 
   // WebSocket URL = you'll need to update this after deployement
-  private wsUrl = 'wss://thoco922u1.execute-api.us-west-2.amazonaws.com/production/';
+  private wsUrl = 'wss://4g5skmt4j7.execute-api.us-west-2.amazonaws.com/production/';
 
   static getInstance(): WebSocketService {
     if (!WebSocketService.instance) {
