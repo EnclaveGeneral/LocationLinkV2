@@ -138,9 +138,6 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         console.log('✅ User found:', user.userId);
         currentUserId = user.userId;
 
-        // Load initial set of data
-        await forceReload();
-
         // Connect to WebSocket
         wsService = WebSocketService.getInstance();
 

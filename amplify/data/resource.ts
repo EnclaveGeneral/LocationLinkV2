@@ -80,6 +80,7 @@ const schema = a.schema({
     ])
     .secondaryIndexes((index) => [
       index('userId')
+        .name('webSocketConnectionsByUserId')
     ]),
 
   // Keep your Lambda mutations
