@@ -1,7 +1,6 @@
 // src/contexts/SubscriptionContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebSocketService } from '../services/websocketService';
-import { SubscriptionService } from '../services/subscriptionService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import type { Schema } from '../../amplify/data/resource';
@@ -36,20 +35,34 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [friends, setFriends] = useState<User[]>([]);
   const [friendsMap, setFriendsMap] = useState<Map<string, User>>(new Map());
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
-  // Add new websockeets state for use
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
   const updateFriendsState = (newFriends: User[]) => {
     const validFriends = newFriends.filter((f): f is User => f !== null && f !== undefined);
 
     const newMap = new Map<string, User>();
-    validFriends.forEach(f => newMap.set(f.id, f));
+
+    validFriends.forEach(f => {
+      newMap.set(f.id, f);
+      console.log(`  📍 Added to map: ${f.username} (${f.id})`);
+    });
+
+    // ✅ ADD: Log what's being removed from the map
+    const oldIds = Array.from(friendsMap.keys());
+    const newIds = Array.from(newMap.keys());
+    const removedIds = oldIds.filter(id => !newIds.includes(id));
+
+    if (removedIds.length > 0) {
+      console.log('  🗑️ Removed from map:', removedIds);
+    }
+
 
     const online = validFriends.filter(f => f.isLocationSharing === true).length;
 
     console.log('📊 Context state updated:', {
       total: validFriends.length,
       online: online,
+      mapSize: newMap.size,
       friendIds: validFriends.map(f => `${f.username} (${f.id})`),
     });
 
@@ -131,11 +144,16 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // Connect to WebSocket
         wsService = WebSocketService.getInstance();
 
-        // Set up event listeners.
-        wsService.on('connected', () => {
+        // Set up event listeners and reconnect
+        wsService.on('connected', async () => {
           console.log('✅ WebSocket connected event');
           setIsWebSocketConnected(true);
-        })
+
+          // Re-sync all data after lost connection and re-connect
+          if (currentUserId) {
+            await forceReload();
+          }
+        });
 
         wsService.on('disconnected', () => {
           console.log('🔴 WebSocket disconnected event');
@@ -152,7 +170,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 username: updatedUser.username,
                 sharing: updatedUser.isLocationSharing,
                 lat: updatedUser.latitude,
-                lng: updatedUser.latitude,
+                lng: updatedUser.longitude,
               });
 
               const newFriends = [...prev];
@@ -205,15 +223,28 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         wsService.on('friendRemoved', async(data: any) => {
 
-          console.log('💔 Friend removed via WebSocket:', data.friendId);
+          console.log('💔 Friend removed via WebSocket:', data);
 
           // Determine which friend was removed
-          const removedFriendId = data.userId === currentUserId ? data.friendId: data.userId;
+          let friendToRemove: string;
 
-          console.log('🗑️ Removing friend from list:', removedFriendId);
+          if (data.userId === currentUserId) {
+            // Initiate removal, remove the friendId
+            friendToRemove = data.friendId;
+          } else if (data.friendId === currentUserId) {
+            // Removed by someone else, remove your friend that removed you
+            friendToRemove = data.userId;
+          } else {
+            // This message isn't for me
+            console.log('⚠️ Received friend removal not involving current user');
+            return;
+
+          }
+
+          console.log(`🗑️ Removing friend from list: ${friendToRemove}`);
 
           setFriends(prev => {
-            const newFriends = prev.filter(f => f.id !== removedFriendId);
+            const newFriends = prev.filter(f => f.id !== friendToRemove);
             console.log(`  ✅ Removed. Friend count: ${prev.length} → ${newFriends.length}`);
             updateFriendsState(newFriends);
             return newFriends;
@@ -232,6 +263,19 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           setPendingRequests(receivedRequests);
         });
 
+        wsService.on('friendRequestSent', async (data: any) => {
+          console.log('📤 Friend request sent via WebSocket:', data);
+
+          // Reload sent requests to include the new one
+          const sentRequests = await dataService.listFriendRequests({
+            senderId: { eq: currentUserId },
+            status: { eq: 'PENDING' }
+          });
+
+          console.log(`  ✅ Updated sent requests: ${sentRequests.length}`);
+          setSentRequests(sentRequests);
+        })
+
         wsService.on('friendRequestAccepted', async (data: any) => {
           console.log('✅ Friend request accepted via WebSocket:', data);
 
@@ -242,8 +286,9 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
             return newSent;
           });
 
-          // Fetch new friend's data to friends list
+          // The SENDER (current user) needs to add the RECEIVER as friend
           const newFriend = await dataService.getUser(data.receiverId);
+
 
           if (newFriend) {
             console.log('✅ Adding newly accepted friend to list:', newFriend.username);
@@ -305,6 +350,22 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     };
   }, []);
+
+  // ✅ ADD: Debug helper (optional, remove in production)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('📊 STATE SNAPSHOT:', {
+        friends: friends.length,
+        mapSize: friendsMap.size,
+        online: friendsOnline,
+        pending: pendingRequests.length,
+        sent: sentRequests.length,
+        connected: isWebSocketConnected,
+      });
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [friends, friendsMap, friendsOnline, pendingRequests, sentRequests, isWebSocketConnected]);
 
   return (
     <SubscriptionContext.Provider value={{

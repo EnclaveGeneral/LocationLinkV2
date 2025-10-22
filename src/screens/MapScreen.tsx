@@ -1,5 +1,5 @@
 // src/screens/MapScreen.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -30,9 +30,7 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
-
-  // Read friends from context
-  const { friendsMap, friendsOnline } = useSubscriptions();
+  const { friends, friendsMap, friendsOnline, isWebSocketConnected } = useSubscriptions();
 
   useEffect(() => {
     initializeMap();
@@ -76,7 +74,22 @@ export default function MapScreen() {
   const searchFriend = () => {
     if (!searchText.trim()) return;
 
-    const friendsArray = Array.from(friendsMap.values());
+    const friendsArray = useMemo(() => {
+      return Array.from(friendsMap.values()).filter(f =>
+        f.isLocationSharing &&
+        f.latitude &&
+        f.longitude
+      );
+    }, [friendsMap]);
+
+    console.log('🗺️ MapScreen rendering:', {
+      friendsCount: friends.length,
+      mapSize: friendsMap.size,
+      visibleOnMap: friendsArray.length,
+      online: friendsOnline,
+    });
+
+
     const friend = friendsArray.find(f =>
       f.username.toLowerCase().includes(searchText.toLowerCase())
     );

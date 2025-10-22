@@ -100,6 +100,10 @@ export class WebSocketService {
         this.emit('friendRemoved', data);
         break;
 
+      case 'FRIEND_REQUEST_SENT':
+        this.emit('friendRequestSent', data);
+        break;
+
       case 'FRIEND_REQUEST_RECEIVED':
         this.emit('friendRequestReceived', data);
         break;
@@ -139,7 +143,7 @@ export class WebSocketService {
   }
 
   private startPingInterval() {
-    // Sned ping every 30 seconds to keep connection alive
+    // Send ping every 30 seconds to keep connection alive
     this.pingInterval = setInterval(() => {
       this.send({ action: 'ping'});
     }, 30000);

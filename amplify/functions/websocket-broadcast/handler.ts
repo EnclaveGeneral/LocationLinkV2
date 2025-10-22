@@ -183,6 +183,20 @@ async function handleFriendRequestUpdate(
     };
 
     await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+
+    // Notify Sender AS WELL
+    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
+    const senderMessage = {
+      type: 'FRIEND_REQUEST_SENT',
+      data: {
+        id: newImage.id,
+        receiverId: newImage.receiverId,
+        receiverUsername: newImage.receiverUsername,
+        status: newImage.status,
+        createdAt: newImage.createdAt,
+      }
+    };
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage)
   }
 
   if (record.eventName === 'MODIFY' && newImage && oldImage) {
