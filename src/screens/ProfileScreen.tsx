@@ -109,7 +109,7 @@ export default function ProfileScreen() {
         visible={modalVisible}
         title={'Logout Confirmation'}
         message={'Are you sure you want to log out?'}
-        type={'warning'}
+        type={'confirm'}
         onConfirm={() => handleSignOut()}
         onClose={() => setModalVisible(false)}
       />

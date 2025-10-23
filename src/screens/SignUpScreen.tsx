@@ -37,7 +37,7 @@ export default function SignUpScreen() {
   const [modalContent, setModalContent] = useState({
     title: '',
     message: '',
-    type: 'error' as 'error' | 'success' | 'warning'
+    type: 'error' as 'error' | 'success' | 'confirm'
   });
   const [showConfirm, setShowConfirm] = useState(false);
   const [topLoading, setTopLoading] = useState(false);
@@ -49,7 +49,7 @@ export default function SignUpScreen() {
     setPasswordErrors(validatePasswords());
   }, [password, confirmPassword]);
 
-  const showModal = (title: string, message: string, type: 'error' | 'success' | 'warning' = 'error') => {
+  const showModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error') => {
     setModalContent({title, message, type});
     setModalVisible(true);
   };

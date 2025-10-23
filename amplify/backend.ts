@@ -137,6 +137,7 @@ backend.websocketMessageFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connec
 backend.websocketBroadcastFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_TABLE_NAME', friendTableName!);
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_REQUEST_TABLE_NAME', friendRequestTableName!);
+backend.websocketBroadcastFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketBroadcastFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoint);
 
 // Grant DynamoDB permissions to access WebSocket functions

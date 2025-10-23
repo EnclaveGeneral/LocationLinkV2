@@ -228,7 +228,7 @@ export default function RequestsScreen() {
         visible={modalVisible}
         title={'Warning'}
         message={'Are you sure you want to accept this friend request?'}
-        type={'warning'}
+        type={'confirm'}
         onClose={() => setModalVisible(false)}
         onConfirm={() => {
           if (selectedRequest) {

@@ -30,10 +30,10 @@ export default function SignInScreen() {
   const [modalContent, setModalContent] = useState({
     title: '',
     message: '',
-    type: 'error' as 'error' | 'success' | 'warning'
+    type: 'error' as 'error' | 'success' | 'confirm'
   });
 
-  const showModal = (title: string, message: string, type: 'error' | 'success' | 'warning' = 'error') => {
+  const showModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error') => {
     setModalVisible(true);
     setModalContent({title, message, type});
   };

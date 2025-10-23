@@ -16,17 +16,34 @@ export const handler = async (event: any) => {
   const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME;
   const wsEndpoint = process.env.WEBSOCKET_ENDPOINT;
 
+
+  // Bruh this error checked caused me so much pain and grief wtf
   // Extra redundant type check, ensrue none of the table is Null() or Undefined ~ ~ ~ Nefer C6R1
-  if (!connectionsTable || !wsEndpoint || !userTable || !friendTable || !friendRequestTable) {
-    console.error('❌ Missing environment variables');
+  if (!connectionsTable) {
+    console.error('❌ Missing environment variable: CONNECTIONS_TABLE');
     return;
   }
 
-
-  if (!connectionsTable || !wsEndpoint) {
-    console.error('❌ Missing environment variables');
+  if (!wsEndpoint) {
+    console.error('❌ Missing environment variable: WS_ENDPOINT');
     return;
   }
+
+  if (!userTable) {
+    console.error('❌ Missing environment variable: USER_TABLE');
+    return;
+  }
+
+  if (!friendTable) {
+    console.error('❌ Missing environment variable: FRIEND_TABLE');
+    return;
+  }
+
+  if (!friendRequestTable) {
+    console.error('❌ Missing environment variable: FRIEND_REQUEST_TABLE');
+    return;
+  }
+
 
   const apiGateway = new ApiGatewayManagementApiClient({
     endpoint: wsEndpoint
@@ -165,48 +182,50 @@ async function handleFriendRequestUpdate(
   const newImage = record.dynamodb.NewImage ? unmarshall(record.dynamodb.NewImage) : null;
   const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : null;
 
+  // New friend request created, notify both party of the new friend request
   if (record.eventName === 'INSERT' && newImage) {
     console.log('📬 New friend request created');
 
     // Notify receiver
-    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
+    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, newImage.receiverId);
 
-    const message = {
+    const receiverMessage = {
       type: 'FRIEND_REQUEST_RECEIVED',
       data: {
-        id: newImage.id,
-        senderId: newImage.senderId,
-        senderUsername: newImage.senderUsername,
-        status: newImage.status,
-        createdAt: newImage.createdAt,
+        id: newImage?.id,
+        senderId: newImage?.senderId,
+        senderUsername: newImage?.senderUsername,
+        status: newImage?.status,
+        createdAt: newImage?.createdAt,
       }
     };
 
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
 
-    // Notify Sender AS WELL
-    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
+    // Notify Sender as well that the friend request was sent
+    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, newImage.senderId);
     const senderMessage = {
       type: 'FRIEND_REQUEST_SENT',
       data: {
-        id: newImage.id,
-        receiverId: newImage.receiverId,
-        receiverUsername: newImage.receiverUsername,
-        status: newImage.status,
-        createdAt: newImage.createdAt,
+        id: newImage?.id,
+        receiverId: newImage?.receiverId,
+        receiverUsername: newImage?.receiverUsername,
+        status: newImage?.status,
+        createdAt: newImage?.createdAt,
       }
     };
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage)
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
   }
 
+  // If the friend request is ACCEPTED. NOTIFY BOTH PARTIES!
   if (record.eventName === 'MODIFY' && newImage && oldImage) {
     if (oldImage.status === 'PENDING' && newImage.status === 'ACCEPTED') {
       console.log('✅ Friend request accepted');
 
-      // Notify sender
-      const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
+      // Notify BOTH Sender && Receiver
+      const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
 
-      const message = {
+      const senderMessage = {
         type: 'FRIEND_REQUEST_ACCEPTED',
         data: {
           requestId: newImage.id,
@@ -215,7 +234,20 @@ async function handleFriendRequestUpdate(
         }
       };
 
-      await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+      await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
+
+      const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
+
+      const receiverMessage = {
+        type: 'FRIEND_REQUEST_ACCEPTED',
+        data: {
+          requestId: newImage.id,
+          receiverId: newImage.senderId,
+          receiverUsername: newImage.senderUsername,
+        }
+      }
+
+      await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
     }
   }
 

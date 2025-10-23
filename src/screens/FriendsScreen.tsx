@@ -117,7 +117,7 @@ export default function FriendsScreen() {
         visible={modalVisible}
         title={'Remove Friend'}
         message={`Are you sure you want to remove ${selectedFriend?.username}?`}
-        type={'warning'}
+        type={'confirm'}
         onClose={() => setModalVisible(false)}
         onConfirm={() => {
           if (selectedFriend) {

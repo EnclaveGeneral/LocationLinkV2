@@ -195,8 +195,7 @@ export const dataService = {
         receiverId: requestData.receiverId,
         status: requestData.status || 'PENDING',
         senderUsername: requestData.senderUsername,
-        receiverUsername: requestData.receiverUsername
-        // No owners field needed - senderId and receiverId ARE the owners!
+        receiverUsername: requestData.receiverUsername,
       });
 
       if (errors) {

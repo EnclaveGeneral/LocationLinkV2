@@ -9,7 +9,7 @@ interface CustomModalProps {
   title: string;
   message: string;
   onClose: () => void;
-  type?: 'error' | 'success' | 'warning';
+  type?: 'error' | 'success' | 'confirm';
   onConfirm?: () => void;
 }
 
