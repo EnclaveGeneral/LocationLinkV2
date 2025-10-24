@@ -30,62 +30,96 @@ export default function CustomModal({
     }
   }
 
-  return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType='fade'
-      onRequestClose={onClose}
-    >
-
-      {/* This is the backdrop/overlay for our modal */}
-      <TouchableOpacity
-        style={styles.backdrop}
-        activeOpacity={1}
-        onPress={onClose} // Tap to close by anywhere outside
-
+  if (type === 'confirm') {
+    return (
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType='fade'
+        onRequestClose={onClose}
       >
 
-        {/* Prevents modal closing when modal itself is rapped */}
+        {/* This is the backdrop/overlay for our modal */}
         <TouchableOpacity
+          style={styles.backdrop}
           activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
+          onPress={onClose} // Tap to close by anywhere outside
+
         >
 
-          <View style={styles.modalContainer}>
-            <View style={styles.content}>
-              <Text style={[styles.title,
-                            type === 'error' && styles.errorModal,
-                            type === 'success' && styles.successModal,
-                            type === 'warning' && styles.warningModal,
-                          ]}>{title}</Text>
-              <Text style={[styles.message,
-                            type === 'error' && styles.errorModal,
-                            type === 'success' && styles.successModal,
-                            type === 'warning' && styles.warningModal,
-                          ]}>{message}</Text>
-            </View>
+          {/* Prevents modal closing when modal itself is rapped */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
 
-            <View style={styles.buttonLayout}>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonLeft]}
-                onPress={handleConfirm}
-              >
-                <Text style={[styles.buttonText, styles.leftButtonText]}>Confirm</Text>
-              </TouchableOpacity>
+            <View style={styles.modalContainer}>
+              <View style={styles.content}>
+                <Text style={[styles.title, styles.confirmModal]}>{title}</Text>
+                <Text style={[styles.message, styles.confirmModal]}>{message}</Text>
+              </View>
 
-              <TouchableOpacity
-                style={[styles.button, styles.buttonRight]}
-                onPress={onClose}
-              >
-                <Text style={[styles.buttonText, styles.rightButtonText]}>Cancel</Text>
-              </TouchableOpacity>
+              <View style={styles.buttonLayout}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonLeft]}
+                  onPress={handleConfirm}
+                >
+                  <Text style={[styles.buttonText, styles.leftButtonText]}>Confirm</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonRight]}
+                  onPress={onClose}
+                >
+                  <Text style={[styles.buttonText, styles.rightButtonText]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
-  );
+      </Modal>
+    );
+  } else {
+    return (
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType='fade'
+        onRequestClose={onClose}
+      >
+        {/* This is the backdrop/overlay for our modal */}
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose} // Tap to close by anywhere outside
+
+        >
+          {/* Prevents modal closing when modal itself is rapped */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+
+            <View style={styles.modalContainer}>
+              <View style={styles.content}>
+                <Text style={[styles.title, styles.confirmModal, type === 'error' ? styles.errorModal : styles.confirmModal]}>{title}</Text>
+                <Text style={[styles.message, styles.confirmModal, type === 'error' ? styles.errorModal : styles.confirmModal]}>{message}</Text>
+              </View>
+
+              <View style={styles.buttonLayout}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonOne, type ==='error' ? styles.errorButton : styles.confirmButton]}
+                  onPress={handleConfirm}
+                >
+                  <Text style={styles.buttonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    )
+  }
 }
 
 const styles = StyleSheet.create({
@@ -111,9 +145,9 @@ const styles = StyleSheet.create({
 
   },
   successModal: {
-    color: '#rgba(42, 153, 14, 1)',
+    color: '#2a990eff',
   },
-  warningModal: {
+  confirmModal: {
     color: '#A910F5',
   },
   title: {
@@ -141,9 +175,19 @@ const styles = StyleSheet.create({
     padding: width * 0.030,
     alignItems: 'center',
   },
+  buttonOne: {
+    borderBottomLeftRadius: width * 0.015,
+    borderBottomRightRadius: width * 0.015,
+  },
   buttonLeft: {
     borderBottomLeftRadius: width * 0.015,
     backgroundColor: '#A910F5'
+  },
+  errorButton: {
+    backgroundColor: '#f80606ff',
+  },
+  confirmButton: {
+    backgroundColor: '#2a990eff',
   },
   leftButtonText: {
     color: '#ffffffff',
@@ -159,5 +203,11 @@ const styles = StyleSheet.create({
     color: '#f2eef4ef',
     fontWeight: 'bold',
     fontSize: width * 0.036,
+  },
+  errorBtnText: {
+
+  },
+  confirmBtnText: {
+
   },
 });
