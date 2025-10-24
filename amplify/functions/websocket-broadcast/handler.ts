@@ -137,11 +137,10 @@ async function handleFriendUpdate(
   if (record.eventName === 'INSERT' && newImage) {
     console.log('👥 New friendship created');
 
-    // Notify both users
-    const userIds = [newImage.userId, newImage.friendId];
-    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
+    // Notify both users of the newly established relationship
+    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
 
-    const message = {
+    const senderMessage = {
       type: 'FRIEND_ADDED',
       data: {
         userId: newImage.userId,
@@ -151,13 +150,27 @@ async function handleFriendUpdate(
       }
     };
 
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
+
+    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
+
+    const receiverMessage = {
+      type: 'FRIEND_ADDED',
+      data: {
+        userId: newImage.userId,
+        friendId: newImage.friendId,
+        userUsername: newImage.userUsername,
+        friendUsername: newImage.friendUsername,
+      }
+    }
+
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
   }
 
   if (record.eventName === 'REMOVE' && oldImage) {
     console.log('💔 Friendship removed');
 
-    // Notify both users
+    // Notify both ends of the relationship of the termination.
     const userIds = [oldImage.userId, oldImage.friendId];
     const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
 
@@ -187,7 +200,7 @@ async function handleFriendRequestUpdate(
     console.log('📬 New friend request created');
 
     // Notify receiver
-    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, newImage.receiverId);
+    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
 
     const receiverMessage = {
       type: 'FRIEND_REQUEST_RECEIVED',
@@ -203,7 +216,7 @@ async function handleFriendRequestUpdate(
     await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
 
     // Notify Sender as well that the friend request was sent
-    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, newImage.senderId);
+    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
     const senderMessage = {
       type: 'FRIEND_REQUEST_SENT',
       data: {
@@ -254,20 +267,33 @@ async function handleFriendRequestUpdate(
   if (record.eventName === 'REMOVE' && oldImage) {
     console.log('🗑️ Friend request deleted');
 
-    // Notify both parties
-    const userIds = [oldImage.senderId, oldImage.receiverId];
-    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
+    // Notify Both Sender and Receiver that the friend request was declined / withdrawn
+    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [oldImage.senderId]);
 
-    const message = {
+    const senderMessage = {
+      type: 'FRIEND_REQUEST_DELETED',
+      data: {
+        requestId: oldImage.id,
+        receiverId: oldImage.receiverId,
+        receiverUsername: oldImage.receiverUsername,
+      }
+    };
+
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
+
+    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [oldImage.receiverId]);
+
+    const receiverMessage = {
       type: 'FRIEND_REQUEST_DELETED',
       data: {
         requestId: oldImage.id,
         senderId: oldImage.senderId,
-        receiverId: oldImage.receiverId,
+        senderUsername: oldImage.senderUsername,
       }
-    };
+    }
 
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
+
   }
 }
 
