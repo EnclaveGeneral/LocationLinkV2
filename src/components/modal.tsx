@@ -102,13 +102,13 @@ export default function CustomModal({
 
             <View style={styles.modalContainer}>
               <View style={styles.content}>
-                <Text style={[styles.title, styles.confirmModal, type === 'error' ? styles.errorModal : styles.confirmModal]}>{title}</Text>
-                <Text style={[styles.message, styles.confirmModal, type === 'error' ? styles.errorModal : styles.confirmModal]}>{message}</Text>
+                <Text style={[styles.title, type === 'error' ? styles.errorModal : styles.successModal]}>{title}</Text>
+                <Text style={[styles.message, type === 'error' ? styles.errorModal : styles.successModal]}>{message}</Text>
               </View>
 
               <View style={styles.buttonLayout}>
                 <TouchableOpacity
-                  style={[styles.button, styles.buttonOne, type ==='error' ? styles.errorButton : styles.confirmButton]}
+                  style={[styles.button, styles.buttonOne, type ==='error' ? styles.errorButton : styles.successButton]}
                   onPress={handleConfirm}
                 >
                   <Text style={styles.buttonText}>Confirm</Text>
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   errorButton: {
     backgroundColor: '#f80606ff',
   },
-  confirmButton: {
+  successButton: {
     backgroundColor: '#2a990eff',
   },
   leftButtonText: {

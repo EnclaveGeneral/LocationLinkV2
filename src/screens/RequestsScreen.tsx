@@ -23,12 +23,21 @@ export default function RequestsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSent, setShowSent] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalContent, setModalContent] = useState({
+    title: '',
+    message: '',
+    type: 'error' as 'error' | 'success' | 'confirm'
+  })
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
 
   // Read from context
   const { pendingRequests, sentRequests, forceReload } = useSubscriptions();
 
   console.log('📬 RequestsScreen rendering - Pending:', pendingRequests.length, 'Sent:', sentRequests.length);
+
+  const setModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error') => {
+    setModalContent({title, message, type});
+  }
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -39,7 +48,8 @@ export default function RequestsScreen() {
 
   const sendFriendRequest = async () => {
     if (!searchUsername.trim()) {
-      Alert.alert('Error', 'Please enter a username');
+      setModal("Request Not Sent", "Please enter a username to send friend request", "error");
+      setModalVisible(true);
       return;
     }
 
@@ -48,11 +58,13 @@ export default function RequestsScreen() {
       console.log('📤 Sending friend request to:', searchUsername);
       await friendService.sendFriendRequest(searchUsername.trim());
 
-      Alert.alert('Success', 'Friend request sent!');
+      setModal("Request Sent", "Your request has been successfully sent!", "success");
+      setModalVisible(true);
       setSearchUsername('');
     } catch (error: any) {
       console.error('Error sending request:', error);
-      Alert.alert('Error', error.message);
+      setModal("Request Not Sent", `Error during sending request: ${error}`, "error");
+      setModalVisible(true);
     } finally {
       setLoading(false);
     }
@@ -66,10 +78,13 @@ export default function RequestsScreen() {
       console.log('✅ Request accepted, forcing reload...');
       await forceReload();
 
-      Alert.alert('Success', `You are now friends with ${request.senderUsername}!`);
+      setModal("Request accepted!", `You are now friends with ${request.senderUsername}!`, 'success');
+      setModalVisible(true);
     } catch (error) {
       console.error('Error accepting request:', error);
-      Alert.alert('Error', 'Failed to accept request');
+
+      setModal('Failed to accept request:', `An error occured during accepting request: ${error}`, 'error');
+      setModalVisible(true);
     }
   };
 

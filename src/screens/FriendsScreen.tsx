@@ -19,10 +19,14 @@ import CustomModal from '@/components/modal';
 export default function FriendsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [removingFriendId, setRemovingFriendId] = useState<string | null>(null); // Track which friend is being removed
-  const [modalVisible, setModalVisible] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
-
   const { friends } = useSubscriptions();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalType, setModalType] = useState({
+    title: '',
+    message: '',
+    type: 'error' as 'error' | 'success' | 'confirm',
+  });
 
   console.log('👥 FriendsScreen rendering:', friends.length, 'friends');
 
@@ -31,12 +35,17 @@ export default function FriendsScreen() {
     setTimeout(() => setRefreshing(false), 500);
   };
 
+  const setModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error' ) => {
+    setModalType({title, message, type});
+  }
+
   const removeFriend = async (friend: any) => {
     setRemovingFriendId(friend.id);
     try {
       const user = await authService.getCurrentUser();
       if (!user) {
-        Alert.alert('Error', 'Not authenticated');
+        setModal("Connection Error", "User not authenticated", 'error');
+        setModalVisible(true);
         return;
       }
 
@@ -47,12 +56,16 @@ export default function FriendsScreen() {
         setTimeout(() => reject(new Error('Request timeout')), 15000) // 15 second timeout
       );
 
+      const removedFriend = friend.username;
+
       const removePromise = friendService.removeFriend(user.userId, friend.id);
 
       await Promise.race([removePromise, timeoutPromise]);
 
       console.log('✅ Friend removed successfully');
-      Alert.alert('Success', 'Friend removed');
+      setModal("Friend Removed", `You have removed ${removedFriend} from your friendlist`, 'success');
+      setSelectedFriend(null);
+      setModalVisible(true);
     } catch (error: any) {
       console.error('❌ Error removing friend:', error);
       if (error.message === 'Request timeout') {
@@ -66,6 +79,7 @@ export default function FriendsScreen() {
   };
 
   const renderFriend = ({ item }: any) => {
+    const isAnyRemoving = removingFriendId !== null;
     const isRemoving = removingFriendId === item.id;
 
     return (
@@ -82,9 +96,10 @@ export default function FriendsScreen() {
         <TouchableOpacity
           onPress={() => {
             setSelectedFriend(item);
+            setModal('Friend Removal Confirmation', `Remove ${item.username} from your friend list?`, 'confirm');
             setModalVisible(true);
           }}
-          disabled={isRemoving}
+          disabled={isAnyRemoving}
         >
           {isRemoving ? (
             <ActivityIndicator size="small" color="#ff5252" />
@@ -115,17 +130,18 @@ export default function FriendsScreen() {
 
       <CustomModal
         visible={modalVisible}
-        title={'Remove Friend'}
-        message={`Are you sure you want to remove ${selectedFriend?.username}?`}
-        type={'confirm'}
+        title={modalType.title}
+        message={modalType.message}
+        type={modalType.type}
         onClose={() => setModalVisible(false)}
         onConfirm={() => {
+          setModalVisible(false);
           if (selectedFriend) {
             removeFriend(selectedFriend);
-            setModalVisible(false);
           }
         }}
-      />
+        >
+      </CustomModal>
     </View>
   );
 }

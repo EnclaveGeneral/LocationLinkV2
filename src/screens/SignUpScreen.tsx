@@ -104,13 +104,6 @@ export default function SignUpScreen() {
     setTopLoading(true);
     try {
       await authService.signUp(email, password, username, phoneNumber);
-      showModal("Registration Suceed", "We will be redirecting you to authenticate next...", "success");
-
-      // Transition to the next page after the user has see the pop up modal message.
-      setTimeout(() => {
-        setModalVisible(false);
-        setShowConfirm(true);
-      }, 1500);
 
     } catch (error: any) {
       showModal("Registration Error", error.message || "There is an error during registration", "error");
@@ -196,7 +189,7 @@ export default function SignUpScreen() {
         });
       }
 
-      showModal("Registration Complete", "Your LocationLink account has been created", "success");
+      showModal("Registration Complete", "Your LocationLink account has been created, redirecting......", "success");
 
       setTimeout(() => {
         setModalVisible(false);
@@ -223,7 +216,7 @@ export default function SignUpScreen() {
             value={confirmationCode}
             onChangeText={setConfirmationCode}
             keyboardType="number-pad"
-            editable={!topLoading}
+            editable={!topLoading && !bottomLoading}
           />
 
           <TouchableOpacity
@@ -359,7 +352,6 @@ export default function SignUpScreen() {
         </View>
 
         <TouchableOpacity
-          style={styles.firstBtn}
           onPress={handleSignUp}
           disabled={topLoading || !filledCorrectly()}
         >
@@ -373,7 +365,7 @@ export default function SignUpScreen() {
             locations={[0, 0.5, 1]}
             start={{x: 0, y: 0}}
             end={{ x: 1, y: 0}}
-            style={styles.button}
+            style={[styles.button, styles.firstBtn]}
 
           >
 
