@@ -57,8 +57,7 @@ export class LocationService {
         // away from the last write to dynamoDB
         if (Date.now() - this.lastDbUpdateTime >= 5000) {
           this.lastDbUpdateTime = Date.now();
-          await this.updateLocationInDB(userId, coords);
-
+          this.updateLocationInDB(userId, coords).catch(err => console.error(err));
         }
 
         // Callback for UI updates

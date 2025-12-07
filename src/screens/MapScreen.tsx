@@ -39,6 +39,13 @@ export default function MapScreen() {
     initializeMap();
   }, []);
 
+  // Get friends array from map, filter for those sharing location
+  const friendsArray = useMemo(() => {
+    return Array.from(friendsMap.values()).filter(
+      f => f.isLocationSharing && f.latitude && f.longitude
+    );
+  }, [friendsMap]);
+
   // Update front end locations everytime the backend location changes!
   useEffect(() => {
     console.log('🗺️ MapScreen - friendsMap updated:', friendsMap.size, 'friends');
@@ -65,6 +72,7 @@ export default function MapScreen() {
 
       const now = Date.now();
       const duration = now - curFriendEntry.lastTime;
+      curFriendEntry.lastTime = now;
 
       Animated.parallel([
         Animated.timing(curFriendEntry.lat, {
@@ -83,15 +91,6 @@ export default function MapScreen() {
     });
 
   }, [friendsMap]);
-
-  // Update friendlist on change.
-  useMemo(() => {
-    return Array.from(friendsMap.values()).filter(f =>
-      f.isLocationSharing &&
-      f.latitude &&
-      f.longitude
-    );
-  }, [friendsMap])
 
   const initializeMap = async () => {
     try {
@@ -173,10 +172,6 @@ export default function MapScreen() {
     );
   }
 
-  // Get friends array from map, filter for those sharing location
-  const friendsArray = Array.from(friendsMap.values()).filter(
-    f => f.isLocationSharing && f.latitude && f.longitude
-  );
 
   console.log('🗺️ MapScreen rendering:', friendsArray.length, 'friends visible on map');
 
@@ -216,8 +211,11 @@ export default function MapScreen() {
         )}
 
         {Array.from(friendsMap.values()).map(friend => {
+          // Check for the all latitude and longtitudes to be valid!
           if (!friend.isLocationSharing || !friend.latitude || !friend.longitude) return null;
           const anim = animatedFriends.get(friend.id);
+          // Null check for animation field
+          if (!anim) return null;
 
           return (
             <Marker.Animated
