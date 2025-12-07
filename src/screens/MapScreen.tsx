@@ -9,6 +9,8 @@ import {
   Text,
   TouchableOpacity,
   Dimensions,
+  Animated,
+  Easing
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
@@ -30,16 +32,66 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  const animatedFriends = useRef(new Map()).current;
   const { friends, friendsMap, friendsOnline, isWebSocketConnected } = useSubscriptions();
 
   useEffect(() => {
     initializeMap();
   }, []);
 
-  // Log whenever friendsMap changes
+  // Update front end locations everytime the backend location changes!
   useEffect(() => {
     console.log('🗺️ MapScreen - friendsMap updated:', friendsMap.size, 'friends');
+
+    friendsMap.forEach(friend => {
+      // First, ensure all new friends have an animated location object if they are added!
+      if (!animatedFriends.has(friend.id) && friend.latitude && friend.longitude) {
+        animatedFriends.set(friend.id, {
+          lat: new Animated.Value(friend.latitude),
+          lng: new Animated.Value(friend.longitude),
+          lastTime: Date.now(),
+        });
+      }
+
+      // We do not need to care if they are not location sharing
+      if (!friend.isLocationSharing || !friend.latitude || !friend.longitude) {
+        return; // Basically a continue process
+      }
+
+      const curFriendEntry = animatedFriends.get(friend.id);
+      if (!curFriendEntry) {
+        return;
+      }
+
+      const now = Date.now();
+      const duration = now - curFriendEntry.lastTime;
+
+      Animated.parallel([
+        Animated.timing(curFriendEntry.lat, {
+          toValue: friend.latitude,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        }),
+        Animated.timing(curFriendEntry.lng, {
+          toValue: friend.longitude,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        }),
+      ]).start(),
+    });
+
   }, [friendsMap]);
+
+  // Update friendlist on change.
+  useMemo(() => {
+    return Array.from(friendsMap.values()).filter(f =>
+      f.isLocationSharing &&
+      f.latitude &&
+      f.longitude
+    );
+  }, [friendsMap])
 
   const initializeMap = async () => {
     try {
@@ -74,13 +126,6 @@ export default function MapScreen() {
   const searchFriend = () => {
     if (!searchText.trim()) return;
 
-    const friendsArray = useMemo(() => {
-      return Array.from(friendsMap.values()).filter(f =>
-        f.isLocationSharing &&
-        f.latitude &&
-        f.longitude
-      );
-    }, [friendsMap]);
 
     console.log('🗺️ MapScreen rendering:', {
       friendsCount: friends.length,
@@ -170,20 +215,25 @@ export default function MapScreen() {
           </Marker>
         )}
 
-        {friendsArray.map((friend) => (
-          <Marker
-            key={friend.id}
-            coordinate={{ latitude: friend.latitude!, longitude: friend.longitude! }}
-            title={friend.username}
-            description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'Unknown'}`}
-          >
-            <View style={styles.friendMarker}>
-              <Text style={styles.friendMarkerText}>
-                {friend.username.substring(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          </Marker>
-        ))}
+        {Array.from(friendsMap.values()).map(friend => {
+          if (!friend.isLocationSharing || !friend.latitude || !friend.longitude) return null;
+          const anim = animatedFriends.get(friend.id);
+
+          return (
+            <Marker.Animated
+              key={friend.id}
+              coordinate={{ latitude: anim.lat, longitude: anim.lng }}
+              title={friend.username}
+              description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'unknown'}`}
+            >
+              <View style={styles.friendMarker}>
+                <Text style={styles.friendMarkerText}>
+                  {friend.username.substring(0, 2).toUpperCase()}
+                </Text>
+              </View>
+            </Marker.Animated>
+          );
+        })}
       </MapView>
 
       <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
