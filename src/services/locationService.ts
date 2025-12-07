@@ -7,6 +7,7 @@ export class LocationService {
   private static instance: LocationService;
   private locationSubscription: Location.LocationSubscription | null = null;
   private isTracking: boolean = false;
+  private lastDbUpdateTime = Date.now();
 
   static getInstance(): LocationService {
     if (!LocationService.instance) {
@@ -43,8 +44,8 @@ export class LocationService {
     this.locationSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: 5000, // Update every 5 seconds of time
-        distanceInterval: 10, // Update on every 10 meters of movement
+        timeInterval: 1000, // Update every 1 seconds of time
+        distanceInterval: 1, // Update on every 5 meters of movement
       },
       async (location) => {
         const coords = {
@@ -52,8 +53,13 @@ export class LocationService {
           longitude: location.coords.longitude,
         };
 
-        // Update in database
-        await this.updateLocationInDB(userId, coords);
+        // Update in database, but only if the current time is at least 5 seconds
+        // away from the last write to dynamoDB
+        if (Date.now() - this.lastDbUpdateTime >= 5000) {
+          this.lastDbUpdateTime = Date.now();
+          await this.updateLocationInDB(userId, coords);
+
+        }
 
         // Callback for UI updates
         if (onLocationUpdate) {
