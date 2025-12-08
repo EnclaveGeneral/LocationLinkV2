@@ -6,7 +6,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -69,9 +68,19 @@ export default function FriendsScreen() {
     } catch (error: any) {
       console.error('❌ Error removing friend:', error);
       if (error.message === 'Request timeout') {
-        Alert.alert('Timeout', 'Request is taking too long. The friend may have been removed. Please refresh.');
+        setModal(
+          'Request Timeout',
+          'Your friend request has been cancelled due to timeout, please try again',
+          'error',
+        )
+        setModalVisible(true);
       } else {
-        Alert.alert('Error', error.message || 'Failed to remove friend');
+        setModalVisible(true);
+        setModal(
+          'Failed to remove friend',
+          error.message || 'Failure to remove friend',
+          'error',
+        )
       }
     } finally {
       setRemovingFriendId(null);

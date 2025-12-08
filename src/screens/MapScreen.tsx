@@ -4,7 +4,6 @@ import {
   View,
   StyleSheet,
   TextInput,
-  Alert,
   ActivityIndicator,
   Text,
   TouchableOpacity,
@@ -18,6 +17,7 @@ import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 import WebSocketIndicator from '../components/WebSocketIndicator';
+import CustomModal from '@/components/modal';
 
 const { height, width } = Dimensions.get('screen');
 
@@ -34,6 +34,12 @@ export default function MapScreen() {
   const [searchText, setSearchText] = useState('');
   const animatedFriends = useRef(new Map()).current;
   const { friends, friendsMap, friendsOnline, isWebSocketConnected } = useSubscriptions();
+  const [showModal, setShowModal] = useState(false);
+  const [modalStats, setModalStats] = useState({
+    type: 'error' as 'error' | 'success' | 'confirm',
+    title: '',
+    message: ''
+  })
 
   useEffect(() => {
     initializeMap();
@@ -87,8 +93,8 @@ export default function MapScreen() {
           easing: Easing.linear,
           useNativeDriver: false,
         }),
-      ]).start(),
-    });
+      ]).start()
+    })
 
   }, [friendsMap]);
 
@@ -148,7 +154,12 @@ export default function MapScreen() {
       setRegion(newRegion);
       mapRef.current?.animateToRegion(newRegion, 1000);
     } else {
-      Alert.alert('Not Found', 'Friend not found or not sharing location');
+      setModalStats({
+        type: 'error',
+        title: 'Search Failure',
+        message: 'Failure to find and locate friends in near proximity'
+      });
+      setShowModal(true);
     }
   };
 
@@ -242,7 +253,6 @@ export default function MapScreen() {
         style={styles.refreshButton}
         onPress={async () => {
           console.log('🔄 Manual refresh triggered');
-          Alert.alert('Refreshed', 'Friend locations updated');
         }}
       >
         <Ionicons name="refresh" size={24} color="#666" />
@@ -256,6 +266,13 @@ export default function MapScreen() {
           <Text style={styles.statusSubtext}>Real-time tracking active</Text>
         )}
       </View>
+      <CustomModal
+        visible={showModal}
+        title={modalStats.title}
+        message={modalStats.message}
+        type={modalStats.type}
+        onClose={() => setShowModal(false)}
+      />
     </View>
   );
 }

@@ -21,6 +21,11 @@ export default function ProfileScreen() {
   const [isLocationSharing, setIsLocationSharing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalContent, setModalContent] = useState({
+    type: 'error' as 'error' | 'success' | 'confirm',
+    title: '',
+    message: ''
+  })
 
   useEffect(() => {
     loadProfile();
@@ -58,7 +63,12 @@ export default function ProfileScreen() {
         isLocationSharing: value,
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to update location sharing');
+      setModalVisible(true);
+      setModalContent({
+        type: 'error',
+        title: 'Update Failure',
+        message: 'Failed to update location sharing'
+      });
       setIsLocationSharing(!value);
     } finally {
       setLoading(false);
@@ -72,7 +82,13 @@ export default function ProfileScreen() {
       await authService.signOut();
       router.replace('/signin');
     } catch (error) {
-      Alert.alert('Error', 'Failed to sign out');
+      setModalVisible(true);
+      setModalContent({
+        type: 'error',
+        title: 'Signout Error',
+        message: 'Failed to sign out'
+      });
+      // Alert.alert('Error', 'Failed to sign out');
     }
   };
 
@@ -107,10 +123,13 @@ export default function ProfileScreen() {
 
       <CustomModal
         visible={modalVisible}
-        title={'Logout Confirmation'}
-        message={'Are you sure you want to log out?'}
-        type={'confirm'}
-        onConfirm={() => handleSignOut()}
+        title={modalContent.title}
+        message={modalContent.message}
+        type={modalContent.type}
+        onConfirm={modalContent.type === 'confirm'
+                    ? () => handleSignOut()
+                    : undefined
+        }
         onClose={() => setModalVisible(false)}
       />
     </ScrollView>
