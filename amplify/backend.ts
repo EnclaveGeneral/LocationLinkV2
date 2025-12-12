@@ -2,6 +2,7 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
+import { storage } from './storage/resource';
 import { acceptFriendRequestFunction } from '../amplify/functions/accept-friend-request/resource';
 import { removeFriendFunction } from '../amplify/functions/remove-friend/resource';
 import { websocketConnectFunction } from './functions/websocket-connect/resource';
@@ -18,6 +19,7 @@ import { CfnOutput } from 'aws-cdk-lib';
 const backend = defineBackend({
   auth,
   data,
+  storage,
   acceptFriendRequestFunction,
   removeFriendFunction,
   websocketConnectFunction,

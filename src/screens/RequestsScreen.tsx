@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Alert,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -98,7 +97,8 @@ export default function RequestsScreen() {
 
     } catch (error) {
       console.error('Error rejecting request:', error);
-      Alert.alert('Error', 'Failed to reject request');
+      setModal("Reject Failure", "Failed To Reject Request", "error");
+      setModalVisible(true);
     }
   };
 
@@ -110,10 +110,20 @@ export default function RequestsScreen() {
       console.log('✅ Request cancelled, forcing reload...');
       await forceReload();
 
-      Alert.alert('Success', 'Request cancelled');
+      setModalContent({
+        title: 'Request cancelled',
+        message: 'Your friend request has been cancelled successfully!',
+        type: 'confirm',
+      })
+      setModalVisible(true);
     } catch (error) {
       console.error('Error cancelling request:', error);
-      Alert.alert('Error', 'Failed to cancel request');
+      setModalContent({
+        title: 'Failed To Cancel',
+        message: 'Failed to cancel your request',
+        type: 'error'
+      });
+      setModalVisible(true);
     }
   };
 

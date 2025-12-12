@@ -7,13 +7,16 @@ import {
   StyleSheet,
   Switch,
   TouchableOpacity,
-  Alert,
+  Image,
   ScrollView,
+  ActivityIndicator
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { LocationService } from '../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
+import { uploadData, downloadData, getUrl } from 'aws-amplify/storage';
 import CustomModal from '@/components/modal';
 
 export default function ProfileScreen() {
@@ -26,6 +29,8 @@ export default function ProfileScreen() {
     title: '',
     message: ''
   })
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -38,6 +43,10 @@ export default function ProfileScreen() {
         const userData = await dataService.getUser(currentUser.userId);
         setUser(userData);
         setIsLocationSharing(userData?.isLocationSharing || false);
+
+        if (userData?.avatarKey) {
+          await loadAvatar();
+        }
       }
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -92,10 +101,90 @@ export default function ProfileScreen() {
     }
   };
 
+  const loadAvatar = async () => {
+    try {
+      const result = await getUrl({
+        path: `profile-pictures/${user.id}/avatar.jpg`,
+      });
+
+      setAvatarUrl(result.url.toString());
+    } catch (error) {
+      console.log('User has no custom avatar');
+    }
+  }
+
+  // Image picker logic
+  const pickAndUploadImage = async() => {
+
+    try {
+
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      // If no permission, we set an error modal and stop!
+      if (!permissionResult.granted) {
+        setModalContent({
+          type: 'error',
+          title: 'Permission Required',
+          message: 'Permission to access the media library is denied'
+        });
+        setModalVisible(true);
+        return;
+      }
+
+      // Proceed with avatar image picker
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1], // For our circular pfp icon display
+        quality: 0.7
+      })
+
+      if (result.canceled) {
+        return;
+      }
+
+      const curUrl = result.assets[0].uri;
+
+      setUploadingImage(true);
+
+      const response = await fetch(curUrl);
+      const blob = await response.blob();
+
+      await uploadData({
+        path: `profile-pictures/${user.id}/avatar.jpg`,
+        data: blob,
+      }).result;
+
+      setAvatarUrl(curUrl);
+
+      await dataService.updateUser(user.id, {
+        avatarKey: `profile-pictures/${user.id}/avatar.jpg`,
+      });
+
+    } catch (error) {
+      setModalContent({
+        type: 'error',
+        title: 'Upload Error',
+        message: 'Error uploading image'
+      })
+      setModalVisible(true);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="person-circle" size={80} color="#4CAF50" />
+        <TouchableOpacity onPress={pickAndUploadImage} disabled={uploadingImage}>
+          {uploadingImage ? (
+            <ActivityIndicator size="large" color="#4CAF50" />
+          ) : avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <Ionicons name="person-circle" size={80} color="#4CAF50" />
+          )}
+        </TouchableOpacity>
         <Text style={styles.username}>{user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
       </View>
@@ -136,6 +225,9 @@ export default function ProfileScreen() {
   );
 }
 
+
+
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -160,6 +252,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     marginTop: 10,
     padding: 20,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,  // Half of width/height = perfect circle
   },
   sectionTitle: {
     fontSize: 18,

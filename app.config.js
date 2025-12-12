@@ -51,6 +51,12 @@ export default {
           locationAlwaysAndWhenInUsePermission: "Allow LocationLink to use your location.",
           locationAlwaysPermission: "Allow LocationLink to use your location to share with your friends.",
           locationWhenInUsePermission: "Allow LocationLink to use your location to share with your friends."
+        },
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photoLibraryPermission": "LocationLink wants to access your gallery and media files."
         }
       ]
     ],

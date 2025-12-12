@@ -66,6 +66,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "avatarKey": {
+              "name": "avatarKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "latitude": {
               "name": "latitude",
               "isArray": false,
@@ -695,6 +702,33 @@
         }
       }
     }
+  },
+  "storage": {
+    "aws_region": "us-west-2",
+    "bucket_name": "amplify-locationlink-godp-profilepicstoragebucketa-n1zinftpjoc4",
+    "buckets": [
+      {
+        "name": "profilePicStorage",
+        "bucket_name": "amplify-locationlink-godp-profilepicstoragebucketa-n1zinftpjoc4",
+        "aws_region": "us-west-2",
+        "paths": {
+          "profile-pictures/${cognito-identity.amazonaws.com:sub}/*": {
+            "entityidentity": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          },
+          "profile-pictures/*": {
+            "authenticated": [
+              "get",
+              "list"
+            ]
+          }
+        }
+      }
+    ]
   },
   "version": "1.4"
 }

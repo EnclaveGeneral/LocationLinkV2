@@ -9,6 +9,7 @@ const schema = a.schema({
       username: a.string().required(),
       email: a.string().required(),
       phoneNumber: a.string(),
+      avatarKey: a.string(),
       latitude: a.float(),
       longitude: a.float(),
       locationUpdatedAt: a.datetime(),
@@ -16,6 +17,7 @@ const schema = a.schema({
       isOnline: a.boolean().default(false),
       lastSeenAt: a.datetime(),
       friends: a.string().array(),
+
     })
     .authorization((allow) => [
       allow.owner(),
