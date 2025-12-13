@@ -185,6 +185,7 @@ export default function ProfileScreen() {
             <Ionicons name="person-circle" size={80} color="#4CAF50" />
           )}
         </TouchableOpacity>
+        <Text style={styles.changePhotoText}>Tap to change photo</Text>
         <Text style={styles.username}>{user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
       </View>
@@ -237,6 +238,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 30,
     backgroundColor: 'white',
+  },
+  changePhotoText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
   },
   username: {
     fontSize: 22,
