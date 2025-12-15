@@ -16,8 +16,9 @@ import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { LocationService } from '../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
-import { uploadData, downloadData, getUrl } from 'aws-amplify/storage';
+import { uploadData, getUrl } from 'aws-amplify/storage';
 import CustomModal from '@/components/modal';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
@@ -38,16 +39,17 @@ export default function ProfileScreen() {
 
   const loadProfile = async () => {
     try {
-      const currentUser = await authService.getCurrentUser();
-      if (currentUser) {
-        const userData = await dataService.getUser(currentUser.userId);
-        setUser(userData);
-        setIsLocationSharing(userData?.isLocationSharing || false);
+     const currentUser = await authService.getCurrentUser();
+     if (currentUser) {
+      const userData = await dataService.getUser(currentUser.userId);
+      setUser(userData);
+      setIsLocationSharing(userData?.isLocationSharing || false);
 
-        if (userData?.avatarKey) {
-          await loadAvatar();
-        }
+      if (userData?.avatarKey) {
+        await loadAvatar(userData.avatarKey);  // ✅ Pass the key directly
       }
+     }
+
     } catch (error) {
       console.error('Error loading profile:', error);
     }
@@ -101,10 +103,11 @@ export default function ProfileScreen() {
     }
   };
 
-  const loadAvatar = async () => {
+  const loadAvatar = async (avatarKey: string) => {
     try {
+      // Use the stored avatarKey path from the database
       const result = await getUrl({
-        path: `profile-pictures/${user.id}/avatar.jpg`,
+        path: avatarKey,
       });
 
       setAvatarUrl(result.url.toString());
@@ -147,18 +150,22 @@ export default function ProfileScreen() {
 
       setUploadingImage(true);
 
+      // Get the Cognito Identity ID
+      const session = await fetchAuthSession();
+      const identityId = session.identityId;
+
       const response = await fetch(curUrl);
       const blob = await response.blob();
 
       await uploadData({
-        path: `profile-pictures/${user.id}/avatar.jpg`,
+        path: `profile-pictures/${identityId}/avatar.jpg`,
         data: blob,
       }).result;
 
       setAvatarUrl(curUrl);
 
       await dataService.updateUser(user.id, {
-        avatarKey: `profile-pictures/${user.id}/avatar.jpg`,
+        avatarKey: `profile-pictures/${identityId}/avatar.jpg`,
       });
 
     } catch (error) {
@@ -167,6 +174,7 @@ export default function ProfileScreen() {
         title: 'Upload Error',
         message: 'Error uploading image'
       })
+      console.log(error);
       setModalVisible(true);
     } finally {
       setUploadingImage(false);
@@ -176,15 +184,22 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={pickAndUploadImage} disabled={uploadingImage}>
-          {uploadingImage ? (
-            <ActivityIndicator size="large" color="#4CAF50" />
-          ) : avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <Ionicons name="person-circle" size={80} color="#4CAF50" />
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity onPress={pickAndUploadImage} disabled={uploadingImage}>
+            <View style={styles.avatarContainer}>
+
+              {uploadingImage ? (
+                <ActivityIndicator size="large" color="#4CAF50" />
+              ) : avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+              ) : (
+                <Ionicons name="person-circle" size={80} color="#4CAF50" />
+              )}
+
+              <View style={styles.editIconContainer}>
+                <Ionicons name="camera" size={15} color="white" />
+              </View>
+            </View>
+          </TouchableOpacity>
         <Text style={styles.changePhotoText}>Tap to change photo</Text>
         <Text style={styles.username}>{user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
@@ -208,7 +223,7 @@ export default function ProfileScreen() {
       </View>
 
       <TouchableOpacity style={styles.signOutButton} onPress={() => {setModalVisible(true)}}>
-        <Text style={styles.signOutText}>Sign Out</Text>
+        <Text style={styles.signOutText}> Sign Out </Text>
       </TouchableOpacity>
 
       <CustomModal
@@ -263,6 +278,22 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,  // Half of width/height = perfect circle
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  editIconContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
   },
   sectionTitle: {
     fontSize: 18,
