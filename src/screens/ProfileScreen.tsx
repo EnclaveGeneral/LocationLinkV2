@@ -222,7 +222,14 @@ export default function ProfileScreen() {
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.signOutButton} onPress={() => {setModalVisible(true)}}>
+      <TouchableOpacity style={styles.signOutButton} onPress={() => {
+        setModalContent({
+          type: 'confirm',
+          title: 'Confirm Sign Out',
+          message: 'Are you sure you want to sign out?'
+        })
+        setModalVisible(true);
+      }}>
         <Text style={styles.signOutText}> Sign Out </Text>
       </TouchableOpacity>
 
@@ -314,7 +321,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   signOutButton: {
-    backgroundColor: '#ff5252',
+    backgroundColor: '#f80606ff',
     margin: 20,
     padding: 15,
     borderRadius: 8,

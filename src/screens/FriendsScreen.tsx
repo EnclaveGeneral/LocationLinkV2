@@ -8,10 +8,12 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Image
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/modal';
 
@@ -94,12 +96,28 @@ export default function FriendsScreen() {
     return (
       <View style={styles.friendItem}>
         <View style={styles.friendInfo}>
-          <Ionicons name="person-circle" size={50} color="#4CAF50" />
+
+          { item.avatarUrl ? (
+            <Image source={{ uri: item.avatarUrl }} style={{ width: 50, height: 50, borderRadius: 25 }} />
+          ) : (
+            <Ionicons name="person-circle" size={50} color="#4CAF50" />
+          )}
+
           <View style={styles.friendDetails}>
             <Text style={styles.friendName}>{item.username}</Text>
-            <Text style={styles.friendStatus}>
-              {item.isLocationSharing ? '📍 Sharing location' : '📍 Location off'}
-            </Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+
+              {item.isLocationSharing ? (
+                <MaterialIcons name='location-on' size={14} color="#9420ceff" />
+              ) : (
+                <MaterialIcons name='location-off' size={14} color="#9420ceff" />
+              )}
+
+              <Text style={styles.friendStatus}>
+                {item.isLocationSharing ? ' Sharing location' : ' Location off'}
+              </Text>
+            </View>
           </View>
         </View>
         <TouchableOpacity

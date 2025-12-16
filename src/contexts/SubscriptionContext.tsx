@@ -3,18 +3,20 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebSocketService } from '../services/websocketService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
+import { getUrl } from 'aws-amplify/storage';
 import type { Schema } from '../../amplify/data/resource';
 
 type User = Schema['User']['type'];
 type FriendRequest = Schema['FriendRequest']['type'];
 // type Friend = Schema['Friend']['type'];
+type UserWithAvatar = User & { avatarUrl?: string };
 
 interface SubscriptionContextType {
   pendingRequests: FriendRequest[];
   sentRequests: FriendRequest[];
-  friends: User[];
+  friends: UserWithAvatar[];
   friendsOnline: number;
-  friendsMap: Map<string, User>;
+  friendsMap: Map<string, UserWithAvatar>;
   forceReload: () => Promise<void>;
   isWebSocketConnected: boolean// Add websocket port access
 }
@@ -32,10 +34,31 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([]);
-  const [friends, setFriends] = useState<User[]>([]);
-  const [friendsMap, setFriendsMap] = useState<Map<string, User>>(new Map());
+  const [friends, setFriends] = useState<UserWithAvatar[]>([]);
+  const [friendsMap, setFriendsMap] = useState<Map<string, UserWithAvatar>>(new Map());
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+
+  // We need to get the profile picture URL from avatarKey from friends that have one and add it to the User object
+  const fetchProfilePictures = async (users: User[]): Promise<User[]> => {
+    const validFriends = users.filter((f): f is User => f !== null && f !== undefined);
+
+    return Promise.all(validFriends.map(async (user) => {
+      if (user.avatarKey) { // If avatarKey exists, fetch the URL
+        try {
+          const result = await getUrl({
+            path: user.avatarKey,
+          })
+          const avatarUrl = result.url.toString();
+          return { ...user, avatarUrl: avatarUrl }; // Add avatarUrl to user object
+        } catch (error) {
+          console.error(`Error fetching profile picture for user ${user.id}:`, error);
+          return user; // Return user without avatarUrl on error
+        }
+      }
+      return user;
+    }));
+  };
 
   const updateFriendsState = (newFriends: User[]) => {
     const validFriends = newFriends.filter((f): f is User => f !== null && f !== undefined);
@@ -100,7 +123,9 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         friendIds.map(id => dataService.getUser(id))
       );
 
-      updateFriendsState(friendsData.filter((f): f is User => f !== null));
+      // Fetch profile pictures for friends
+      const friendsWithAvatars = await fetchProfilePictures(friendsData);
+      updateFriendsState(friendsWithAvatars);
 
       // Load friend requests
       const requests = await dataService.listFriendRequests({

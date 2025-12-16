@@ -9,7 +9,8 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
-  Easing
+  Easing,
+  Image
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
@@ -95,6 +96,14 @@ export default function MapScreen() {
         }),
       ]).start()
     })
+
+    return () => {
+      // Delete all animations so that our current map is clean when we switch tabs
+      animatedFriends.forEach( friend => {
+        friend.lat.stopAnimation();
+        friend.lng.stopAnimation();
+      });
+    }
 
   }, [friendsMap]);
 
@@ -236,9 +245,14 @@ export default function MapScreen() {
               description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'unknown'}`}
             >
               <View style={styles.friendMarker}>
-                <Text style={styles.friendMarkerText}>
-                  {friend.username.substring(0, 2).toUpperCase()}
-                </Text>
+
+                {friend.avatarUrl ? (
+                  <Image source={{ uri: friend.avatarUrl }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                ) : (
+                  <Text style={styles.friendMarkerText}>
+                    {friend.username.substring(0, 2).toUpperCase()}
+                  </Text>
+                )}
               </View>
             </Marker.Animated>
           );
