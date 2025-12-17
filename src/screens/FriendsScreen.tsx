@@ -8,7 +8,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Image
+  Image,
+  Dimensions
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
@@ -16,6 +17,8 @@ import { useSubscriptions } from '../contexts/SubscriptionContext';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/modal';
+
+const { width } = Dimensions.get('screen');
 
 export default function FriendsScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -98,7 +101,7 @@ export default function FriendsScreen() {
         <View style={styles.friendInfo}>
 
           { item.avatarUrl ? (
-            <Image source={{ uri: item.avatarUrl }} style={{ width: 50, height: 50, borderRadius: 25 }} />
+            <Image source={{ uri: item.avatarUrl }} style={{ width: width * 0.15, height: width * 0.15, borderRadius: width * 0.075 }} />
           ) : (
             <Ionicons name="person-circle" size={50} color="#4CAF50" />
           )}
@@ -183,10 +186,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: 'white',
-    padding: 15,
-    marginHorizontal: 10,
-    marginVertical: 5,
-    borderRadius: 10,
+    borderColor: '#9420ceff',
+    borderWidth: width * 0.002,
+    padding: width * 0.03,
+    marginHorizontal: width * 0.03,
+    marginVertical: width * 0.04,
+    borderRadius: width * 0.02,
   },
   friendInfo: {
     flexDirection: 'row',

@@ -34,7 +34,7 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const animatedFriends = useRef(new Map()).current;
-  const { friends, friendsMap, friendsOnline, isWebSocketConnected } = useSubscriptions();
+  const { friends, friendsMap, friendsOnline, forceReload } = useSubscriptions();
   const [showModal, setShowModal] = useState(false);
   const [modalStats, setModalStats] = useState({
     type: 'error' as 'error' | 'success' | 'confirm',
@@ -199,7 +199,6 @@ export default function MapScreen() {
     <View style={styles.container}>
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#666" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search friend..."
@@ -207,6 +206,7 @@ export default function MapScreen() {
             onChangeText={setSearchText}
             onSubmitEditing={searchFriend}
           />
+          <Ionicons name="search" size={width * 0.05} color="#4709b1ff" />
         </View>
         <WebSocketIndicator />
       </View>
@@ -221,8 +221,8 @@ export default function MapScreen() {
         {userLocation && (
           <Marker
             coordinate={userLocation}
-            title="You"
-            description="Your current location"
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
           >
             <View style={styles.userMarker}>
               <View style={styles.userMarkerInner} />
@@ -243,6 +243,9 @@ export default function MapScreen() {
               coordinate={{ latitude: anim.lat, longitude: anim.lng }}
               title={friend.username}
               description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'unknown'}`}
+              anchor={{ x: 0.5, y: 0.5}}
+              tracksViewChanges={false}
+
             >
               <View style={styles.friendMarker}>
 
@@ -260,21 +263,23 @@ export default function MapScreen() {
       </MapView>
 
       <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
-        <Ionicons name="locate" size={24} color="#666" />
+        <Ionicons name="locate" size={width * 0.06} color="#9420ceff" />
       </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.refreshButton}
         onPress={async () => {
+          {/* Manual Refresh Current and All Friends Location! */}
+          await forceReload();
           console.log('🔄 Manual refresh triggered');
         }}
       >
-        <Ionicons name="refresh" size={24} color="#666" />
+        <Ionicons name="refresh" size={width * 0.06} color="#9420ceff" />
       </TouchableOpacity>
 
       <View style={styles.statusBar}>
         <Text style={styles.statusText}>
-          {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
+          {friendsArray.length} friend{friendsArray.length > 1 ? 's' : ''} online
         </Text>
         {friendsArray.length > 0 && (
           <Text style={styles.statusSubtext}>Real-time tracking active</Text>
@@ -302,7 +307,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 10,
-    color: '#666',
+    color: '#9420ceff',
   },
   searchContainer: {
     position: 'absolute',
@@ -334,6 +339,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 45,
     marginLeft: 10,
+    color: '#9420ceff'
   },
   liveIndicator: {
     flexDirection: 'row',
@@ -405,8 +411,8 @@ const styles = StyleSheet.create({
   },
   statusBar: {
     position: 'absolute',
-    bottom: 30,
-    left: 20,
+    bottom: width * 0.05,
+    left: width * 0.01,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 15,
     paddingVertical: 8,
@@ -422,18 +428,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   userMarker: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(33, 150, 243, 0.3)',
+    width: width * 0.1,
+    height: width * 0.1,
+    borderRadius: width * 0.1,
+    backgroundColor: '#4709b18d',
     alignItems: 'center',
     justifyContent: 'center',
   },
   userMarkerInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
+    width: width * 0.04,
+    height: width * 0.04,
+    borderRadius: width * 0.04,
+    backgroundColor: '#A910F5',
   },
   friendMarker: {
     width: 36,

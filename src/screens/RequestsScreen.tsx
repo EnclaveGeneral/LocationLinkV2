@@ -14,6 +14,7 @@ import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from "expo-linear-gradient";
 import CustomModal from '@/components/modal';
 
 export default function RequestsScreen() {
@@ -193,15 +194,26 @@ export default function RequestsScreen() {
             autoCapitalize="none"
           />
           <TouchableOpacity
-            style={[styles.sendButton, loading && styles.disabledButton]}
             onPress={sendFriendRequest}
             disabled={loading}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
-            )}
+            <LinearGradient
+              colors={
+                    loading
+                      ? ['#a8a4a4ef', '#a8a4a4ef', '#a8a4a4ef']
+                      : ['#1b3decff', '#9420ceff', '#4709b1ff']
+              }
+              locations={[0, 0.25, 0.75]}
+              start={{x: 0, y: 0}}
+              end={{ x: 1, y: 0}}
+              style={[styles.sendButton, loading && styles.disabledButton]}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.sendButtonText}>Send</Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -273,7 +285,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
   searchContainer: { flexDirection: 'row', gap: 10 },
   input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
-  sendButton: { backgroundColor: '#4CAF50', paddingHorizontal: 20, borderRadius: 8, justifyContent: 'center' },
+  sendButton: { backgroundColor: '#4CAF50', paddingHorizontal: 20, paddingVertical: 15, borderRadius: 8, justifyContent: 'center' },
   disabledButton: { opacity: 0.7 },
   sendButtonText: { color: 'white', fontWeight: 'bold' },
   tabs: { flexDirection: 'row', backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },

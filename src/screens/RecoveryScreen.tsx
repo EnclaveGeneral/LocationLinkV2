@@ -295,15 +295,6 @@ export default function RecoveryScreen() {
             editable={!secondLoading}
           />
 
-          <TextInput
-            style={[styles.input, styles.passInput]}
-            placeholder="Confirm Your New Password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry={!showPassword}
-            editable={!secondLoading}
-          />
-
           <TouchableOpacity
             style={styles.iconContainer}
             onPress={() => setShowPassword(!showPassword)} // Toggle password visibility
@@ -315,6 +306,15 @@ export default function RecoveryScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        <TextInput
+          style={[styles.input, styles.passInput]}
+          placeholder="Confirm Your New Password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry={!showPassword}
+          editable={!secondLoading}
+        />
 
         <View style={styles.errorList}>
           <Text style={styles.requirements}>
@@ -328,7 +328,6 @@ export default function RecoveryScreen() {
         </View>
 
         <TouchableOpacity
-          style={styles.button}
           onPress={handleReset}
           disabled={secondLoading || newPassword.trim() === "" ||
                 confirmPassword.trim() === "" || confirmationCode.trim() === ""

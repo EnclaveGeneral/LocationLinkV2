@@ -38,6 +38,10 @@ function RootNavigator() {
               name="signup"
               options={{ title: 'Sign Up', headerShown: false }}
             />
+            <Stack.Screen
+              name="recovery"
+              options={{ title: 'Recovery', headerShown: false }}
+            />
           </>
         ) : (
           <Stack.Screen

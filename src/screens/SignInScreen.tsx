@@ -125,21 +125,24 @@ export default function SignInScreen() {
 
       <TouchableOpacity
         style={[bottomLoading && styles.button]}
-        // onPress={ ** Function that leads to Account Recovery }
-        disabled={true} // Change this to loading once function above implemented
+        onPress={() => router.push("/recovery")}
+        disabled={topLoading}
       >
         <LinearGradient
-          // Gradient goes from left to right
-          colors={['#1b3decff', '#9420ceff', '#4709b1ff']}
+         colors={
+                topLoading
+                  ? ['#a8a4a4ef', '#a8a4a4ef', '#a8a4a4ef']
+                  : ['#1b3decff', '#9420ceff', '#4709b1ff']
+          }
           locations={[0, 0.5, 1]}
           start={{x: 0, y: 0}}
           end={{ x: 1, y: 0}}
-          style={styles.button}
+          style={[styles.button]}
         >
-          {bottomLoading ? (
+          {topLoading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.buttonText}>Forget Password/Recovery</Text>
+            <Text style={styles.buttonText}>Account Recovery</Text>
           )}
         </LinearGradient>
       </TouchableOpacity>
