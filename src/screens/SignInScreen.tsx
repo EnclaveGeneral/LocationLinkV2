@@ -124,7 +124,7 @@ export default function SignInScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={bottomLoading && styles.button}
+        style={[bottomLoading && styles.button]}
         // onPress={ ** Function that leads to Account Recovery }
         disabled={true} // Change this to loading once function above implemented
       >

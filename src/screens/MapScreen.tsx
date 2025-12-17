@@ -186,7 +186,7 @@ export default function MapScreen() {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color="#9420ceff" />
         <Text style={styles.loadingText}>Loading map...</Text>
       </View>
     );

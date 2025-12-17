@@ -19,7 +19,6 @@ import CustomModal from "@/components/modal";
 import { authService } from "../services/authService";
 import { dataService } from "../services/dataService";
 import { Ionicons } from '@expo/vector-icons';
-import { BatchStatementErrorCodeEnum } from "@aws-sdk/client-dynamodb";
 
 // Get the current device size to style our elements appropriately.
 const {height, width} = Dimensions.get("screen");
@@ -194,7 +193,7 @@ export default function SignUpScreen() {
       setTimeout(() => {
         setModalVisible(false);
         router.replace("/(tabs)");
-      }, 1500);
+      }, 2000);
     } catch (error: any) {
       showModal("Error", error.message || "There is an error in confirming your account", 'error');
     } finally {
@@ -256,6 +255,14 @@ export default function SignUpScreen() {
             }} disabled={loading}>
             <Text style={styles.link}>Back to Sign Up</Text>
           </TouchableOpacity> */}
+          <CustomModal
+            visible={modalVisible}
+            title={modalContent.title}
+            message={modalContent.message}
+            type={modalContent.type}
+            onClose={() => setModalVisible(false)}
+          />
+
         </ScrollView>
       </KeyboardAvoidingView>
     );

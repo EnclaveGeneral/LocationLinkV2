@@ -1,5 +1,5 @@
 // src/services/authService.ts
-import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes, resendSignUpCode } from 'aws-amplify/auth';
+import { signUp, signIn, signOut, confirmSignUp, getCurrentUser, fetchUserAttributes, resendSignUpCode, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export const authService = {
@@ -73,6 +73,30 @@ export const authService = {
       return attributes;
     } catch {
       return null;
+    }
+  },
+
+  async resetPassword(email: string) {
+    try {
+      const result = await resetPassword({
+        username: email,
+      });
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async confirmResetPassword(email: string, code: string, newPassword: string) {
+    try {
+      const result = await confirmResetPassword({
+        username: email,
+        confirmationCode: code,
+        newPassword: newPassword,
+      })
+      return result;
+    } catch (error) {
+      throw error;
     }
   }
 };
