@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     color: "#A910F5",
     padding: width * 0.04,
     marginVertical: width * 0.015,
-    borderRadius: 8,
+    borderRadius: width * 0.018,
     fontSize: width * 0.03,
   },
   passInput: {

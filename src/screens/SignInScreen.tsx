@@ -100,7 +100,6 @@ export default function SignInScreen() {
       </View>
 
       <TouchableOpacity
-        style={[topLoading && styles.firstBtn]}
         onPress={handleSignIn}
         disabled={topLoading || !filled}
       >
@@ -124,7 +123,6 @@ export default function SignInScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[bottomLoading && styles.button]}
         onPress={() => router.push("/recovery")}
         disabled={topLoading}
       >
@@ -137,7 +135,7 @@ export default function SignInScreen() {
           locations={[0, 0.5, 1]}
           start={{x: 0, y: 0}}
           end={{ x: 1, y: 0}}
-          style={[styles.button]}
+          style={styles.button}
         >
           {topLoading ? (
             <ActivityIndicator color="white" />
@@ -195,7 +193,7 @@ const styles = StyleSheet.create({
     color: "#A910F5",
     padding: width * 0.04,
     marginVertical: width * 0.015,
-    borderRadius: 8,
+    borderRadius: width * 0.018,
     fontSize: width * 0.03,
   },
   passInput: {
@@ -215,7 +213,7 @@ const styles = StyleSheet.create({
     marginBottom: width * 0.05
   },
   firstBtn: {
-    marginTop: width * 0.1,
+    marginTop: width * 0.35,
   },
   buttonText: {
     color: "white",

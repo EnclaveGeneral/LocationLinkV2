@@ -22,6 +22,26 @@ import CustomModal from '@/components/modal';
 
 const { height, width } = Dimensions.get('screen');
 
+const MARKER_COLORS = [
+  '#4CAF50', // Green
+  '#2196F3', // Blue
+  '#9C27B0', // Purple
+  '#FF9800', // Orange
+  '#E91E63', // Pink
+  '#00BCD4', // Cyan
+  '#FF5722', // Deep Orange
+  '#673AB7', // Deep Purple
+];
+
+const getRandomColor = (oderId: string) => {
+  // Generate a color based on friend ID
+  let hash = 0;
+  for (let i = 0 ; i < oderId.length; i++) {
+    hash = oderId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return MARKER_COLORS[Math.abs(hash) % MARKER_COLORS.length];
+}
+
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState({
@@ -214,6 +234,7 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        toolbarEnabled={false}
         style={styles.map}
         initialRegion={region}
         showsUserLocation={false}
@@ -237,6 +258,8 @@ export default function MapScreen() {
           // Null check for animation field
           if (!anim) return null;
 
+          const markerColor = getRandomColor(friend.id);
+
           return (
             <Marker.Animated
               key={friend.id}
@@ -250,11 +273,13 @@ export default function MapScreen() {
               <View style={styles.friendMarker}>
 
                 {friend.avatarUrl ? (
-                  <Image source={{ uri: friend.avatarUrl }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                  <Image source={{ uri: friend.avatarUrl }} style={{ width: width * 0.08, height: width * 0.08, borderRadius: width * 0.04 }} />
                 ) : (
-                  <Text style={styles.friendMarkerText}>
-                    {friend.username.substring(0, 2).toUpperCase()}
-                  </Text>
+                  <View style={[styles.friendMarker, { backgroundColor: markerColor }]}>
+                    <Text style={styles.friendMarkerText}>
+                      {friend.username.substring(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
                 )}
               </View>
             </Marker.Animated>
@@ -306,7 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: width * 0.025,
     color: '#9420ceff',
   },
   searchContainer: {
@@ -337,7 +362,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    height: 45,
+    height: width * 0.10,
     marginLeft: 10,
     color: '#9420ceff'
   },
@@ -346,92 +371,93 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'white',
     paddingHorizontal: width * 0.02,
-    paddingVertical: width * 0.03,
-    borderRadius: 20,
+    paddingVertical: width * 0.10,
+    borderRadius: width * 0.05,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: width * 0.005,
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: width * 0.0086,
     elevation: 5,
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: width * 0.018,  // was: 8
+    height: width * 0.018,  // was: 8
+    borderRadius: width * 0.009,  // was: 4
     backgroundColor: '#4CAF50',
-    marginRight: 5,
+    marginRight: width * 0.011,  // was: 5
   },
   liveText: {
     color: '#4CAF50',
     fontWeight: '600',
+    fontSize: width * 0.035,  // was: 14
   },
   map: {
     flex: 1,
   },
   centerButton: {
     position: 'absolute',
-    right: 15,
-    bottom: 100,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    right: width * 0.033,  // was: 15
+    bottom: width * 0.223,  // was: 100
+    width: width * 0.112,  // was: 50
+    height: width * 0.112,  // was: 50
+    borderRadius: width * 0.056,  // was: 25
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: width * 0.0045,  // was: 2
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: width * 0.0086,  // was: 3.84
     elevation: 5,
   },
   refreshButton: {
     position: 'absolute',
-    right: 15,
-    bottom: 160, // Above the center button
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    right: width * 0.033,  // was: 15
+    bottom: width * 0.357,  // was: 160
+    width: width * 0.112,  // was: 50
+    height: width * 0.112,  // was: 50
+    borderRadius: width * 0.056,  // was: 25
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: width * 0.0045,  // was: 2
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: width * 0.0086,  // was: 3.84
     elevation: 5,
   },
   statusBar: {
     position: 'absolute',
-    bottom: width * 0.05,
-    left: width * 0.01,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
+    bottom: width * 0.02,
+    right: width * 0.01,
+    backgroundColor: 'rgba(117, 9, 167, 1)',
+    paddingHorizontal: width * 0.033,  // was: 15
+    paddingVertical: width * 0.018,  // was: 8
+    borderRadius: width * 0.045,  // was: 20
   },
   statusText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: width * 0.031,  // was: 14
   },
   statusSubtext: {
     color: '#90EE90',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: width * 0.022,  // was: 10
+    marginTop: width * 0.0045,  // was: 2
   },
   userMarker: {
     width: width * 0.1,
     height: width * 0.1,
     borderRadius: width * 0.1,
-    backgroundColor: '#4709b18d',
+    backgroundColor: 'rgba(109, 74, 255, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -439,21 +465,20 @@ const styles = StyleSheet.create({
     width: width * 0.04,
     height: width * 0.04,
     borderRadius: width * 0.04,
-    backgroundColor: '#A910F5',
+    backgroundColor: '#b133f0ff',
   },
   friendMarker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4CAF50',
+    width: width * 0.08,  // was: 36
+    height: width * 0.08,  // was: 36
+    borderRadius: width * 0.04,  // was: 18
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: width * 0.0045,  // was: 2
     borderColor: 'white',
   },
   friendMarkerText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: width * 0.027,  // was: 12
     fontWeight: 'bold',
   },
 });
