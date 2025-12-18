@@ -12,13 +12,14 @@ import {
   Easing,
   Image
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 import WebSocketIndicator from '../components/WebSocketIndicator';
-import CustomModal from '@/components/modal';
+import CustomModal from '@
+/components/modal';
 
 const { height, width } = Dimensions.get('screen');
 
@@ -41,6 +42,55 @@ const getRandomColor = (oderId: string) => {
   }
   return MARKER_COLORS[Math.abs(hash) % MARKER_COLORS.length];
 }
+
+const FriendMarker = ({ friend, coordinate, color }: any) => {
+  // FIX 2: specific state to track image loading
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    // Stop tracking changes after a delay to save battery/performance
+    // but give the image time to render first
+    if (!friend.avatarUrl) {
+        const timer = setTimeout(() => {
+            setTracksViewChanges(false);
+        }, 500);
+        return () => clearTimeout(timer);
+    }
+  }, [friend.avatarUrl]);
+
+  const onImageLoad = () => {
+    // Once image loads, allow one more render cycle then freeze
+    setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 100);
+  };
+
+  return (
+    <Marker.Animated
+      coordinate={coordinate}
+      title={friend.username}
+      anchor={{ x: 0.5, y: 0.5 }}
+      // Use the dynamic state here
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View style={styles.friendMarker}>
+        {friend.avatarUrl ? (
+          <Image
+            source={{ uri: friend.avatarUrl }}
+            style={{ width: width * 0.1, height: width * 0.1, borderRadius: width * 0.05 }}
+            onLoad={onImageLoad}
+          />
+        ) : (
+          <View style={[styles.friendMarker, { backgroundColor: color }]}>
+             <Text style={styles.friendMarkerText}>
+               {friend.username.substring(0, 2).toUpperCase()}
+             </Text>
+          </View>
+        )}
+      </View>
+    </Marker.Animated>
+  );
+};
 
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
@@ -69,7 +119,7 @@ export default function MapScreen() {
   // Get friends array from map, filter for those sharing location
   const friendsArray = useMemo(() => {
     return Array.from(friendsMap.values()).filter(
-      f => f.isLocationSharing && f.latitude && f.longitude
+      f => f.isLocationSharing && f.latitude != null && f.longitude != null
     );
   }, [friendsMap]);
 
@@ -79,17 +129,27 @@ export default function MapScreen() {
 
     friendsMap.forEach(friend => {
       // First, ensure all new friends have an animated location object if they are added!
-      if (!animatedFriends.has(friend.id) && friend.latitude && friend.longitude) {
+      if (
+        friend.isLocationSharing &&
+        friend.latitude != null &&
+        friend.longitude != null &&
+        !animatedFriends.has(friend.id)
+      ) {
         animatedFriends.set(friend.id, {
-          lat: new Animated.Value(friend.latitude),
-          lng: new Animated.Value(friend.longitude),
+          coordinate: new AnimatedRegion({
+            latitude: friend.latitude,
+            longitude: friend.longitude,
+            latitudeDelta: 0,
+            longitudeDelta: 0,
+          }),
           lastTime: Date.now(),
         });
       }
 
-      // We do not need to care if they are not location sharing
-      if (!friend.isLocationSharing || !friend.latitude || !friend.longitude) {
-        return; // Basically a continue process
+      // We need to terminate animations for friends who have stopped sharing locations
+      if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
+        animatedFriends.delete(friend.id);
+        return;
       }
 
       const curFriendEntry = animatedFriends.get(friend.id);
@@ -98,31 +158,21 @@ export default function MapScreen() {
       }
 
       const now = Date.now();
-      const duration = now - curFriendEntry.lastTime;
+      const duration = Math.min(1500, Math.max(500, now - curFriendEntry.lastTime));
       curFriendEntry.lastTime = now;
 
-      Animated.parallel([
-        Animated.timing(curFriendEntry.lat, {
-          toValue: friend.latitude,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: false,
-        }),
-        Animated.timing(curFriendEntry.lng, {
-          toValue: friend.longitude,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: false,
-        }),
-      ]).start()
-    })
+      curFriendEntry.coordinate.timing({
+        latitude: friend.latitude,
+        longitude: friend.longitude,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }).start();
+    });
 
     return () => {
       // Delete all animations so that our current map is clean when we switch tabs
-      animatedFriends.forEach( friend => {
-        friend.lat.stopAnimation();
-        friend.lng.stopAnimation();
-      });
+      animatedFriends.clear();
     }
 
   }, [friendsMap]);
@@ -173,7 +223,7 @@ export default function MapScreen() {
       f.username.toLowerCase().includes(searchText.toLowerCase())
     );
 
-    if (friend && friend.latitude && friend.longitude) {
+    if (friend && friend.latitude != null && friend.longitude != null) {
       const newRegion = {
         latitude: friend.latitude,
         longitude: friend.longitude,
@@ -252,37 +302,32 @@ export default function MapScreen() {
         )}
 
         {Array.from(friendsMap.values()).map(friend => {
-          // Check for the all latitude and longtitudes to be valid!
-          if (!friend.isLocationSharing || !friend.latitude || !friend.longitude) return null;
-          const anim = animatedFriends.get(friend.id);
-          // Null check for animation field
-          if (!anim) return null;
+          if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) return null;
 
+          // Immediate render the object
+          // Don't wait for useEffect, or the first render will always be null.
+          if (!animatedFriends.has(friend.id)) {
+            animatedFriends.set(friend.id, {
+              coordinate: new AnimatedRegion({
+                latitude: friend.latitude,
+                longitude: friend.longitude,
+                latitudeDelta: 0,
+                longitudeDelta: 0,
+              }),
+              lastTime: Date.now(),
+            });
+          }
+
+          const anim = animatedFriends.get(friend.id);
           const markerColor = getRandomColor(friend.id);
 
           return (
-            <Marker.Animated
-              key={friend.id}
-              coordinate={{ latitude: anim.lat, longitude: anim.lng }}
-              title={friend.username}
-              description={`Last updated: ${friend.locationUpdatedAt ? new Date(friend.locationUpdatedAt).toLocaleTimeString() : 'unknown'}`}
-              anchor={{ x: 0.5, y: 0.5}}
-              tracksViewChanges={false}
-
-            >
-              <View style={styles.friendMarker}>
-
-                {friend.avatarUrl ? (
-                  <Image source={{ uri: friend.avatarUrl }} style={{ width: width * 0.08, height: width * 0.08, borderRadius: width * 0.04 }} />
-                ) : (
-                  <View style={[styles.friendMarker, { backgroundColor: markerColor }]}>
-                    <Text style={styles.friendMarkerText}>
-                      {friend.username.substring(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Marker.Animated>
+            <FriendMarker
+                key={friend.id}
+                friend={friend}
+                coordinate={anim.coordinate}
+                color={markerColor}
+            />
           );
         })}
       </MapView>
@@ -454,17 +499,17 @@ const styles = StyleSheet.create({
     marginTop: width * 0.0045,  // was: 2
   },
   userMarker: {
-    width: width * 0.1,
-    height: width * 0.1,
-    borderRadius: width * 0.1,
+    width: width * 0.07,
+    height: width * 0.07,
+    borderRadius: width * 0.035,
     backgroundColor: 'rgba(109, 74, 255, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   userMarkerInner: {
-    width: width * 0.04,
-    height: width * 0.04,
-    borderRadius: width * 0.04,
+    width: width * 0.03,
+    height: width * 0.03,
+    borderRadius: width * 0.015,
     backgroundColor: '#b133f0ff',
   },
   friendMarker: {
