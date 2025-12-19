@@ -62,7 +62,7 @@ export default function SignInScreen() {
       <Text style={styles.title}>Sign In</Text>
       <Image
         style={styles.logo}
-        source={require('../../assets/loading_icon.png')}
+        source={require('../../assets/welcome_icon.png')}
         resizeMode="contain"
       />
       <Text style={styles.subtitle}>Welcome back to LocationLink</Text>

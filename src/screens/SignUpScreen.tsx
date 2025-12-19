@@ -280,7 +280,7 @@ export default function SignUpScreen() {
 
         <Image
           style={styles.logo}
-          source={require('../../assets/starting_icon.png')}
+          source={require('../../assets/welcome_two_icon.png')}
           resizeMode= "contain"
         />
 
