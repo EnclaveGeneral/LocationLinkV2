@@ -9,13 +9,17 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Dimensions
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from "expo-linear-gradient";
 import CustomModal from '@/components/modal';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+
+const { width } = Dimensions.get('window');
 
 export default function RequestsScreen() {
   const [searchUsername, setSearchUsername] = useState('');
@@ -131,7 +135,7 @@ export default function RequestsScreen() {
   const renderPendingRequest = ({ item }: any) => (
     <View style={styles.requestItem}>
       <View style={styles.requestInfo}>
-        <Ionicons name="person-add" size={24} color="#FF9800" />
+        <Ionicons name="person-add" size={width * 0.055} color="#FF9800" />
         <View style={styles.requestText}>
           <Text style={styles.requestUsername}>{item.senderUsername || 'Unknown'}</Text>
           <Text style={styles.requestSubtext}>Wants to be your friend</Text>
@@ -148,13 +152,13 @@ export default function RequestsScreen() {
             setModalVisible(true);
           }}
         >
-          <Ionicons name="checkmark" size={20} color="white" />
+          <Ionicons name="checkmark" size={width * 0.045} color="white" />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.rejectButton]}
           onPress={() => rejectRequest(item)}
         >
-          <Ionicons name="close" size={20} color="white" />
+          <Ionicons name="close" size={width * 0.045} color="white" />
         </TouchableOpacity>
       </View>
     </View>
@@ -163,7 +167,7 @@ export default function RequestsScreen() {
   const renderSentRequest = ({ item }: any) => (
     <View style={styles.requestItem}>
       <View style={styles.requestInfo}>
-        <Ionicons name="send" size={24} color="#2196F3" />
+        <Ionicons name="send" size={width * 0.055} color="#2196F3" />
         <View style={styles.requestText}>
           <Text style={styles.requestUsername}>{item.receiverUsername || 'Unknown'}</Text>
           <Text style={styles.requestSubtext}>Pending</Text>
@@ -249,13 +253,10 @@ export default function RequestsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons
-              name={showSent ? 'send-outline' : 'mail-open-outline'}
-              size={60}
-              color="#ddd"
-            />
+            {showSent ? (<FontAwesome name="send-o" size={width * 0.135} color="#ddd" />)
+                      : (<MaterialIcons name="mail" size={width * 0.135} color="#ddd" />)}
             <Text style={styles.emptyText}>
-              {showSent ? 'No sent requests' : 'No pending requests'}
+              {showSent ? 'You have sent no request(s)' : 'You have received no request(s)'}
             </Text>
           </View>
         }
@@ -279,34 +280,152 @@ export default function RequestsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // keep all your existing styles as-is
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  searchSection: { backgroundColor: 'white', padding: 15 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  searchContainer: { flexDirection: 'row', gap: 10 },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
-  sendButton: { backgroundColor: '#4CAF50', paddingHorizontal: 20, paddingVertical: 15, borderRadius: 8, justifyContent: 'center' },
-  disabledButton: { opacity: 0.7 },
-  sendButtonText: { color: 'white', fontWeight: 'bold' },
-  tabs: { flexDirection: 'row', backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
-  tab: { flex: 1, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
-  activeTab: { borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
-  tabText: { color: '#666' },
-  activeTabText: { color: '#4CAF50', fontWeight: '600' },
-  badge: { marginLeft: 5, backgroundColor: '#FF9800', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
-  requestItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: 15, marginHorizontal: 10, marginVertical: 5, borderRadius: 10 },
-  requestInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  requestText: { marginLeft: 15, flex: 1 },
-  requestUsername: { fontSize: 16, fontWeight: 'bold' },
-  requestSubtext: { fontSize: 14, color: '#666', marginTop: 2 },
-  requestTime: { fontSize: 12, color: '#999', marginTop: 2 },
-  requestButtons: { flexDirection: 'row', gap: 10 },
-  button: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  acceptButton: { backgroundColor: '#4CAF50' },
-  rejectButton: { backgroundColor: '#f44336' },
-  cancelButton: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 15, backgroundColor: '#f0f0f0' },
-  cancelText: { color: '#666', fontSize: 14 },
-  emptyContainer: { alignItems: 'center', paddingTop: 50 },
-  emptyText: { color: '#999', marginTop: 10, fontSize: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5'
+  },
+  searchSection: {
+    backgroundColor: 'white',
+    padding: width * 0.033             // was: 15
+  },
+  sectionTitle: {
+    fontSize: width * 0.040,           // was: 18
+    fontWeight: 'bold',
+    marginBottom: width * 0.022        // was: 10
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    gap: width * 0.022                 // was: 10
+  },
+  input: {
+    flex: 1,
+    borderWidth: width * 0.002,        // was: 1
+    borderColor: '#ddd',
+    borderRadius: width * 0.018,       // was: 8
+    paddingHorizontal: width * 0.033,  // was: 15
+    paddingVertical: width * 0.022,    // was: 10
+    fontSize: width * 0.031            // was: 14
+  },
+  sendButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: width * 0.045,  // was: 20
+    paddingVertical: width * 0.033,    // was: 15
+    borderRadius: width * 0.018,       // was: 8
+    justifyContent: 'center'
+  },
+  disabledButton: {
+    opacity: 0.7
+  },
+  sendButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: width * 0.031            // was: 14
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    borderBottomWidth: width * 0.002,  // was: 1
+    borderBottomColor: '#e0e0e0'
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: width * 0.033,    // was: 15
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center'
+  },
+  activeTab: {
+    borderBottomWidth: width * 0.0045, // was: 2
+    borderBottomColor: '#A910F5'
+  },
+  tabText: {
+    color: '#666',
+    fontSize: width * 0.031            // was: 14
+  },
+  activeTabText: {
+    color: '#A910F5',
+    fontWeight: '600'
+  },
+  badge: {
+    marginLeft: width * 0.011,         // was: 5
+    backgroundColor: '#FF9800',
+    borderRadius: width * 0.022,       // was: 10
+    paddingHorizontal: width * 0.013,  // was: 6
+    paddingVertical: width * 0.0045    // was: 2
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: width * 0.027,           // was: 12
+    fontWeight: 'bold'
+  },
+  requestItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: width * 0.033,            // was: 15
+    marginHorizontal: width * 0.022,   // was: 10
+    marginVertical: width * 0.011,     // was: 5
+    borderRadius: width * 0.022        // was: 10
+  },
+  requestInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1
+  },
+  requestText: {
+    marginLeft: width * 0.033,         // was: 15
+    flex: 1
+  },
+  requestUsername: {
+    fontSize: width * 0.036,           // was: 16
+    fontWeight: 'bold'
+  },
+  requestSubtext: {
+    fontSize: width * 0.031,           // was: 14
+    color: '#666',
+    marginTop: width * 0.0045          // was: 2
+  },
+  requestTime: {
+    fontSize: width * 0.027,           // was: 12
+    color: '#999',
+    marginTop: width * 0.0045          // was: 2
+  },
+  requestButtons: {
+    flexDirection: 'row',
+    gap: width * 0.022                 // was: 10
+  },
+  button: {
+    width: width * 0.080,              // was: 36
+    height: width * 0.080,
+    borderRadius: width * 0.040,       // was: 18
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  acceptButton: {
+    backgroundColor: '#4CAF50'
+  },
+  rejectButton: {
+    backgroundColor: '#f44336'
+  },
+  cancelButton: {
+    paddingHorizontal: width * 0.033,  // was: 15
+    paddingVertical: width * 0.018,    // was: 8
+    borderRadius: width * 0.033,       // was: 15
+    backgroundColor: '#f0f0f0'
+  },
+  cancelText: {
+    color: '#666',
+    fontSize: width * 0.031            // was: 14
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: width * 0.112          // was: 50
+  },
+  emptyText: {
+    color: '#999',
+    marginTop: width * 0.022,          // was: 10
+    fontSize: width * 0.036            // was: 16
+  },
 });
+

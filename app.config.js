@@ -9,7 +9,7 @@ export default {
     scheme: "locationLink",
     platforms: ["android", "ios"],
     orientation: "portrait",
-    icon: "./assets/icon.png",
+    icon: "./assets/starting_icon.png",
     userInterfaceStyle: "light",
     splash: {
       image: "./assets/splash-icon.png",
@@ -29,7 +29,7 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/adaptive-icon.png",
+        foregroundImage: "./assets/starting_icon.png",
         backgroundColor: "#ffffff"
       },
       package: "com.yourcompany.locationlink",

@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     padding: width * 0.04,
-    borderRadius: 8,
+    borderRadius: width * 0.020,
     alignItems: "center",
     marginBottom: width * 0.05
   },

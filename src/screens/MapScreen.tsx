@@ -18,8 +18,7 @@ import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 import WebSocketIndicator from '../components/WebSocketIndicator';
-import CustomModal from '@
-/components/modal';
+import CustomModal from '@/components/modal';
 
 const { height, width } = Dimensions.get('screen');
 
@@ -73,21 +72,23 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
       // Use the dynamic state here
       tracksViewChanges={tracksViewChanges}
     >
-      <View style={styles.friendMarker}>
-        {friend.avatarUrl ? (
+
+      {friend.avatarUrl ? (
+        <View style={[styles.friendMarker, { backgroundColor: 'transparent'}]}>
           <Image
             source={{ uri: friend.avatarUrl }}
             style={{ width: width * 0.1, height: width * 0.1, borderRadius: width * 0.05 }}
             onLoad={onImageLoad}
           />
-        ) : (
-          <View style={[styles.friendMarker, { backgroundColor: color }]}>
-             <Text style={styles.friendMarkerText}>
-               {friend.username.substring(0, 2).toUpperCase()}
-             </Text>
-          </View>
-        )}
-      </View>
+        </View>
+      ) : (
+        <View style={[styles.friendMarker, { backgroundColor: color }]}>
+          <Text style={styles.friendMarkerText}>
+            {friend.username.substring(0, 2).toUpperCase()}
+          </Text>
+        </View>
+      )}
+
     </Marker.Animated>
   );
 };
@@ -408,7 +409,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: width * 0.10,
-    marginLeft: 10,
+    marginLeft: width * 0.02,
     color: '#9420ceff'
   },
   liveIndicator: {
@@ -416,7 +417,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'white',
     paddingHorizontal: width * 0.02,
-    paddingVertical: width * 0.10,
+    paddingVertical: width * 0.015,
     borderRadius: width * 0.05,
     shadowColor: '#000',
     shadowOffset: {
@@ -513,14 +514,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#b133f0ff',
   },
   friendMarker: {
-    width: width * 0.08,  // was: 36
-    height: width * 0.08,  // was: 36
-    borderRadius: width * 0.04,  // was: 18
+    width: width * 0.08,  // Match image size
+    height: width * 0.08,
+    borderRadius: width * 0.04,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: width * 0.0045,  // was: 2
+    borderWidth: width * 0.0045,
     borderColor: 'white',
+    overflow: 'hidden',  // Add this for image clipping
   },
+
   friendMarkerText: {
     color: 'white',
     fontSize: width * 0.027,  // was: 12

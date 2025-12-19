@@ -31,11 +31,13 @@ export default function FriendsScreen() {
     message: '',
     type: 'error' as 'error' | 'success' | 'confirm',
   });
+  const { forceReload } = useSubscriptions();
 
   console.log('👥 FriendsScreen rendering:', friends.length, 'friends');
 
   const onRefresh = async () => {
     setRefreshing(true);
+    await forceReload();
     setTimeout(() => setRefreshing(false), 500);
   };
 
@@ -103,18 +105,18 @@ export default function FriendsScreen() {
           { item.avatarUrl ? (
             <Image source={{ uri: item.avatarUrl }} style={{ width: width * 0.15, height: width * 0.15, borderRadius: width * 0.075 }} />
           ) : (
-            <Ionicons name="person-circle" size={50} color="#4CAF50" />
+            <Ionicons name="person-circle" size={width * 0.15} color="#4CAF50" />
           )}
 
           <View style={styles.friendDetails}>
             <Text style={styles.friendName}>{item.username}</Text>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: width * 0.008 }}>
 
               {item.isLocationSharing ? (
-                <MaterialIcons name='location-on' size={14} color="#9420ceff" />
+                <MaterialIcons name='location-on' size={width * 0.025} color="#9420ceff" />
               ) : (
-                <MaterialIcons name='location-off' size={14} color="#9420ceff" />
+                <MaterialIcons name='location-off' size={width * 0.025} color="#9420ceff" />
               )}
 
               <Text style={styles.friendStatus}>
@@ -152,8 +154,8 @@ export default function FriendsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={80} color="#ddd" />
-            <Text style={styles.emptyText}>No friends yet</Text>
+            <MaterialIcons name="contacts" size={width * 0.20} color="#ddd" />
+            <Text style={styles.emptyText}>You have no friend(s)</Text>
           </View>
         }
       />
@@ -198,26 +200,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   friendDetails: {
-    marginLeft: 15,
+    marginLeft: width * 0.030,
   },
   friendName: {
-    fontSize: 16,
+    fontSize:   width * 0.035,
     fontWeight: 'bold',
   },
   friendStatus: {
-    fontSize: 14,
+    fontSize: width * 0.030,
     color: '#666',
-    marginTop: 2,
+    marginTop: width * 0.005,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingTop: width * 0.25,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: width * 0.04,
     color: '#999',
-    marginTop: 10,
+    marginTop: width * 0.025,
   },
 });

@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     padding: width * 0.03,
-    borderRadius: 8,
+    borderRadius: width * 0.020,
     alignItems: "center",
     marginTop: width * 0.05,
   },

@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
+
+const { width } = Dimensions.get('screen');
 
 export default function WebSocketIndicator() {
   const { isWebSocketConnected } = useSubscriptions();
@@ -16,20 +18,21 @@ export default function WebSocketIndicator() {
 
 }
 
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: width * 0.027,  // was: 12
+    paddingVertical: width * 0.013,    // was: 6
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 20,
+    borderRadius: width * 0.045,       // was: 20
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+    width: width * 0.018,              // was: 8
+    height: width * 0.018,
+    borderRadius: width * 0.009,       // was: 4
+    marginRight: width * 0.013,        // was: 6
   },
   connected: {
     backgroundColor: '#4CAF50',
@@ -39,7 +42,8 @@ const styles = StyleSheet.create({
   },
   text: {
     color: 'white',
-    fontSize: 12,
+    fontSize: width * 0.027,           // was: 12
     fontWeight: '600',
   },
 });
+

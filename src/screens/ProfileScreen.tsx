@@ -9,7 +9,9 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  ActivityIndicator
+  ActivityIndicator,
+  Dimensions,
+  Platform
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/authService';
@@ -19,6 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { uploadData, getUrl } from 'aws-amplify/storage';
 import CustomModal from '@/components/modal';
 import { fetchAuthSession } from 'aws-amplify/auth';
+
+const { width } = Dimensions.get('screen');
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
@@ -90,6 +94,13 @@ export default function ProfileScreen() {
     try {
       const locationService = LocationService.getInstance();
       await locationService.stopLocationTracking();
+
+      if (user) {
+        await dataService.updateUser(user.id, {
+          isLocationSharing: false,
+        });
+      }
+
       await authService.signOut();
       router.replace('/signin');
     } catch (error) {
@@ -192,11 +203,11 @@ export default function ProfileScreen() {
               ) : avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatar} />
               ) : (
-                <Ionicons name="person-circle" size={80} color="#4CAF50" />
+                <Ionicons name="person-circle" size={width * 0.25} color="#4CAF50" />
               )}
 
               <View style={styles.editIconContainer}>
-                <Ionicons name="camera" size={15} color="white" />
+                <Ionicons name="camera" size={width * 0.035} color="white" />
               </View>
             </View>
           </TouchableOpacity>
@@ -210,15 +221,22 @@ export default function ProfileScreen() {
         <View style={styles.settingRow}>
           <Text style={styles.settingLabel}>Share My Location</Text>
           <Switch
+            trackColor={{ false: '#666', true: '#A910F5' }}
             value={isLocationSharing}
             onValueChange={toggleLocationSharing}
             disabled={loading}
+
           />
         </View>
         <Text style={styles.settingDescription}>
           {isLocationSharing
-            ? 'Your location is visible to friends'
-            : 'Your location is hidden'}
+            ? <Text style={[styles.settingDescription, styles.settingOn]}>
+                Your current location is visible to friends
+              </Text>
+            : <Text style={[styles.settingDescription, styles.settingOff]}>
+                Your current location is hidden to friends
+              </Text>
+           }
         </Text>
       </View>
 
@@ -258,33 +276,33 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    padding: 30,
+    padding: width * 0.070,
     backgroundColor: 'white',
   },
   changePhotoText: {
-    fontSize: 12,
+    fontSize: width * 0.030,
     color: '#666',
-    marginTop: 8,
+    marginTop: width * 0.020,
   },
   username: {
-    fontSize: 22,
+    fontSize: width * 0.050,
     fontWeight: 'bold',
-    marginTop: 10,
+    marginTop: width * 0.025,
   },
   email: {
-    fontSize: 16,
+    fontSize: width * 0.035,
     color: '#666',
-    marginTop: 5,
+    marginTop:  width * 0.010,
   },
   section: {
     backgroundColor: 'white',
-    marginTop: 10,
-    padding: 20,
+    marginTop: width * 0.025,
+    padding: width * 0.050,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,  // Half of width/height = perfect circle
+    width: width * 0.25,
+    height: width * 0.25,
+    borderRadius: width * 0.125,  // Half of width/height = perfect circle
   },
   avatarContainer: {
     position: 'relative',
@@ -293,19 +311,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    backgroundColor: '#9420ceff',
+    borderRadius: width * 0.025,
+    width: width * 0.050,
+    height: width * 0.050,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: width * 0.045,
     borderColor: 'white',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: width * 0.040,
     fontWeight: 'bold',
-    marginBottom: 15,
+    marginBottom: width * 0.030,
   },
   settingRow: {
     flexDirection: 'row',
@@ -313,23 +331,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: width * 0.035,
   },
   settingDescription: {
-    fontSize: 14,
+    fontSize: width * 0.030,
     color: '#666',
-    marginTop: 8,
+    marginTop:  width * 0.020,
+    fontWeight: 'bold',
+  },
+  settingOn: {
+    color: '#4CAF50',
+  },
+  settingOff: {
+    color: '#f80606ff',
   },
   signOutButton: {
     backgroundColor: '#f80606ff',
-    margin: 20,
-    padding: 15,
-    borderRadius: 8,
+    margin: width * 0.055,
+    padding: width * 0.035,
+    borderRadius: width * 0.020,
     alignItems: 'center',
   },
   signOutText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: width * 0.040,
   },
 });
