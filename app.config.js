@@ -18,7 +18,8 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.yourcompany.locationlink",
+      bundleIdentifier: "com.theenclave.locationlink",
+      package: "com.theenclave.locationlink",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS
       },

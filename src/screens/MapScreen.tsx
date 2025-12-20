@@ -57,6 +57,7 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
     }
   }, [friend.avatarUrl]);
 
+
   const onImageLoad = () => {
     // Once image loads, allow one more render cycle then freeze
     setTimeout(() => {
@@ -93,6 +94,18 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
   );
 };
 
+// NEW: Loading step type for progress indicator
+type LoadingStep = 'auth' | 'permissions' | 'location' | 'tracking' | 'done';
+
+const LOADING_MESSAGES: Record<LoadingStep, string> = {
+  auth: 'Checking authentication...',
+  permissions: 'Requesting location permissions...',
+  location: 'Getting your location...',
+  tracking: 'Starting location tracking...',
+  done: 'Map ready!',
+};
+
+
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState({
@@ -103,6 +116,7 @@ export default function MapScreen() {
   });
   const [userLocation, setUserLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
   const [searchText, setSearchText] = useState('');
   const animatedFriends = useRef(new Map()).current;
   const { friends, friendsMap, friendsOnline, forceReload } = useSubscriptions();
@@ -180,14 +194,20 @@ export default function MapScreen() {
 
   const initializeMap = async () => {
     try {
+      setLoadingStep('auth');
       const user = await authService.getCurrentUser();
-      if (!user) return;
-
+      if (!user) {
+        console.error('No user found');
+        setLoading(false);
+        return;
+      }
       // Start location tracking
+      setLoadingStep('permissions');
       const locationService = LocationService.getInstance();
       const hasPermission = await locationService.requestPermissions();
 
       if (hasPermission) {
+        setLoadingStep('location');
         const location = await locationService.getCurrentLocation();
         setUserLocation(location);
         setRegion({
@@ -196,11 +216,22 @@ export default function MapScreen() {
           longitudeDelta: 0.01,
         });
 
+        setLoadingStep('tracking');
         await locationService.startLocationTracking(user.userId, (newLocation) => {
           setUserLocation(newLocation);
         });
+      } else {
+        console.log('⚠️ Location permission not granted');
+        // Still show map, just without user location
+        setModalStats({
+          type: 'error',
+          title: 'Permission Required',
+          message: 'Location permission is required to show your position on the map. You can still see your friends\' locations.'
+        });
+        setShowModal(true);
       }
 
+      setLoadingStep('done');
     } catch (error) {
       console.error('Error initializing map:', error);
     } finally {
@@ -254,14 +285,36 @@ export default function MapScreen() {
     }
   };
 
+  // NEW: Improved loading screen with progress
   if (loading) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#9420ceff" />
-        <Text style={styles.loadingText}>Loading map...</Text>
+        <Text style={styles.loadingText}>{LOADING_MESSAGES[loadingStep]}</Text>
+        {/* Progress dots */}
+        <View style={styles.progressContainer}>
+          {(['auth', 'permissions', 'location', 'tracking'] as LoadingStep[]).map((step, index) => {
+            const steps = ['auth', 'permissions', 'location', 'tracking'];
+            const currentIndex = steps.indexOf(loadingStep);
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+
+            return (
+              <View
+                key={step}
+                style={[
+                  styles.progressDot,
+                  isComplete && styles.progressDotComplete,
+                  isCurrent && styles.progressDotCurrent,
+                ]}
+              />
+            );
+          })}
+        </View>
       </View>
     );
   }
+
 
 
   console.log('🗺️ MapScreen rendering:', friendsArray.length, 'friends visible on map');
@@ -379,6 +432,23 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: width * 0.025,
     color: '#9420ceff',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    marginTop: width * 0.05,
+    gap: width * 0.02,
+  },
+  progressDot: {
+    width: width * 0.025,
+    height: width * 0.025,
+    borderRadius: width * 0.0125,
+    backgroundColor: '#e0e0e0',
+  },
+  progressDotComplete: {
+    backgroundColor: '#9420ceff',
+  },
+  progressDotCurrent: {
+    backgroundColor: '#4CAF50',
   },
   searchContainer: {
     position: 'absolute',

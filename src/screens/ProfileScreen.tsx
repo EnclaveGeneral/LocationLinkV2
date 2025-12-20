@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     height: width * 0.050,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: width * 0.045,
+    borderWidth: width * 0.0045,
     borderColor: 'white',
   },
   sectionTitle: {
