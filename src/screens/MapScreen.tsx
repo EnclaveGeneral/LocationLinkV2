@@ -338,6 +338,7 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        customMapStyle={[]}
         toolbarEnabled={false}
         style={styles.map}
         initialRegion={region}
