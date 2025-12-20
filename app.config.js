@@ -24,7 +24,8 @@ export default {
       },
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "LocationLink needs access to your location to share it with your friends.",
-        NSLocationAlwaysAndWhenInUseUsageDescription: "LocationLink needs access to your location to continuously share it with your friends."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "LocationLink needs access to your location to continuously share it with your friends.",
+        UIBackgroundModes: ["location", "fetch"]
       }
     },
     android: {
@@ -40,7 +41,10 @@ export default {
       },
       permissions: [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     plugins: [
