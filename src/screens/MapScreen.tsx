@@ -1,10 +1,4 @@
-// src/screens/MapScreen.tsx - OPTIMIZED FOR REAL DEVICES
-// Key changes:
-// 1. Use low-accuracy location first for instant map display
-// 2. Upgrade to high-accuracy GPS in background
-// 3. Use cached location as fallback
-// 4. Parallelize initialization where possible
-
+// src/screens/MapScreen.tsx - OPTIMIZED FOR REAL DEVICES WITH LOADING DOTS
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -25,7 +19,6 @@ import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
@@ -84,15 +77,17 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
   );
 };
 
-type LoadingStep = 'init' | 'location' | 'done';
+// Loading steps - YOUR ORIGINAL with dots
+type LoadingStep = 'auth' | 'permissions' | 'location' | 'tracking' | 'done';
 
 const LOADING_MESSAGES: Record<LoadingStep, string> = {
-  init: 'Setting up...',
-  location: 'Finding your location...',
+  auth: 'Checking authentication...',
+  permissions: 'Requesting location permissions...',
+  location: 'Getting your location...',
+  tracking: 'Starting location tracking...',
   done: 'Map ready!',
 };
 
-// DEFAULT LOCATION (use if all else fails - center of US)
 const DEFAULT_REGION = {
   latitude: 39.8283,
   longitude: -98.5795,
@@ -105,7 +100,7 @@ export default function MapScreen() {
   const [region, setRegion] = useState(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingStep, setLoadingStep] = useState<LoadingStep>('init');
+  const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
   const [searchText, setSearchText] = useState('');
   const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'medium'>('low');
   const animatedFriends = useRef(new Map()).current;
@@ -117,8 +112,7 @@ export default function MapScreen() {
     message: ''
   });
 
-  // Track if high-accuracy location is being fetched
-  const isUpgradingLocation = useRef(false);
+  const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     initializeMapFast();
@@ -175,71 +169,74 @@ export default function MapScreen() {
     };
   }, [friendsMap]);
 
-  // OPTIMIZED: Fast initialization strategy
+  // OPTIMIZED: Fast initialization - show map ASAP
   const initializeMapFast = async () => {
     const startTime = Date.now();
     console.log('🗺️ Starting FAST map initialization...');
 
     try {
-      // STEP 1: Check auth and permissions in parallel
-      setLoadingStep('init');
-
-      const [user, permissionResponse] = await Promise.all([
-        authService.getCurrentUser(),
-        Location.requestForegroundPermissionsAsync(),
-      ]);
+      // STEP 1: Auth check
+      setLoadingStep('auth');
+      const user = await authService.getCurrentUser();
 
       if (!user) {
         console.error('No user found');
         setLoading(false);
         return;
       }
+      userIdRef.current = user.userId;
+      console.log(`📍 Auth complete (${Date.now() - startTime}ms)`);
 
-      const hasPermission = permissionResponse.status === 'granted';
+      // STEP 2: Permission check
+      setLoadingStep('permissions');
+      const { status } = await Location.requestForegroundPermissionsAsync();
 
-      if (!hasPermission) {
+      if (status !== 'granted') {
         console.log('⚠️ Location permission not granted');
         setModalStats({
           type: 'error',
-          title: 'Location Permission Required',
+          title: 'Permission Required',
           message: 'Location permission is required to show your position on the map.'
         });
         setShowModal(true);
         setLoading(false);
         return;
       }
+      console.log(`📍 Permissions granted (${Date.now() - startTime}ms)`);
 
+      // STEP 3: Get initial location FAST
       setLoadingStep('location');
+      const initialLocation = await getFastLocation();
 
-      // STEP 2: Try to get location FAST using multiple strategies in parallel
-      const location = await getFastLocation();
-
-      if (location) {
-        console.log(`📍 Got location in ${Date.now() - startTime}ms (accuracy: ${locationAccuracy})`);
-        setUserLocation(location);
+      if (initialLocation) {
+        console.log(`📍 Got initial location in ${Date.now() - startTime}ms`);
+        setUserLocation(initialLocation);
         setRegion({
-          ...location,
+          ...initialLocation,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         });
       }
 
-      // STEP 3: Show the map immediately!
+      // STEP 4: Show "tracking" briefly then show map
+      setLoadingStep('tracking');
+
+      // ⚡ KEY FIX: Don't wait for tracking to start - show map immediately!
+      // Use a short delay just to show the step visually
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // STEP 5: SHOW THE MAP NOW!
       setLoadingStep('done');
       setLoading(false);
       console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
 
-      // STEP 4: Start location tracking in background (don't await!)
-      const locationService = LocationService.getInstance();
-      locationService.startLocationTracking(user.userId, (newLocation) => {
-        setUserLocation(newLocation);
-        setLocationAccuracy('medium');
-      }).catch(err => console.error('Location tracking error:', err));
+      // STEP 6: Start location tracking in BACKGROUND (fire and forget)
+      startTrackingInBackground(user.userId);
 
-      // STEP 5: If we got a low-accuracy location, upgrade to high-accuracy in background
-      if (locationAccuracy === 'low' && !isUpgradingLocation.current) {
-        upgradeToHighAccuracy();
-      }
+      // Request background permissions in background too
+      Location.requestBackgroundPermissionsAsync()
+        .then(({ status }) => console.log('Background permission:', status))
+        .catch(console.error);
 
     } catch (error) {
       console.error('Error initializing map:', error);
@@ -247,20 +244,38 @@ export default function MapScreen() {
     }
   };
 
-  // Get location as fast as possible using multiple strategies
+  // Start tracking without blocking the UI
+  const startTrackingInBackground = (userId: string) => {
+    const locationService = LocationService.getInstance();
+
+    locationService.startLocationTracking(userId, (newLocation) => {
+      setUserLocation(newLocation);
+
+      if (newLocation.accuracy != null && newLocation.accuracy < 50) {
+        setLocationAccuracy('medium');
+      }
+
+    }).catch(err => console.error('Location tracking error:', err));
+  };
+
+  // Get location as fast as possible
   const getFastLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
     try {
-      // Strategy 1: Try to get cached location from AsyncStorage (instant!)
-      const cachedLocationStr = await AsyncStorage.getItem('lastLocation');
-      let cachedLocation = cachedLocationStr ? JSON.parse(cachedLocationStr) : null;
+      // Strategy 1: Try cached location (instant!)
+      const cachedStr = await AsyncStorage.getItem('lastLocation');
+      if (cachedStr) {
+        console.log('📍 Using cached location from storage');
+        setLocationAccuracy('low');
+        return JSON.parse(cachedStr);
+      }
 
-      // Strategy 2: Try getLastKnownPositionAsync (very fast, might be stale)
+      // Strategy 2: Try getLastKnownPositionAsync (very fast)
       const lastKnown = await Location.getLastKnownPositionAsync({
-        maxAge: 5 * 60 * 1000, // Accept locations up to 5 minutes old
+        maxAge: 10 * 60 * 1000, // Accept up to 10 minutes old
       });
 
       if (lastKnown) {
-        console.log('📍 Using last known position (fast!)');
+        console.log('📍 Using last known position');
         setLocationAccuracy('low');
         return {
           latitude: lastKnown.coords.latitude,
@@ -268,79 +283,33 @@ export default function MapScreen() {
         };
       }
 
-      // Strategy 3: If we have cached location, use it while getting fresh location
-      if (cachedLocation) {
-        console.log('📍 Using cached location from storage');
-        setLocationAccuracy('low');
-        return cachedLocation;
-      }
-
-      // Strategy 4: Get a LOW accuracy location (fast - uses cell/wifi, not GPS)
+      // Strategy 3: Get LOW accuracy location with short timeout
       console.log('📍 Getting low-accuracy location...');
-      const lowAccuracyLocation = await Promise.race([
+      const lowAccuracy = await Promise.race([
         Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Lowest, // Cell tower / WiFi - very fast!
+          accuracy: Location.Accuracy.Low, // Cell/WiFi - fast
         }),
-        // Timeout after 5 seconds
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
       ]);
 
-      if (lowAccuracyLocation && typeof lowAccuracyLocation === 'object' && 'coords' in lowAccuracyLocation) {
+      if (lowAccuracy && 'coords' in lowAccuracy) {
         console.log('📍 Got low-accuracy location');
         setLocationAccuracy('low');
-        return {
-          latitude: lowAccuracyLocation.coords.latitude,
-          longitude: lowAccuracyLocation.coords.longitude,
+        const coords = {
+          latitude: lowAccuracy.coords.latitude,
+          longitude: lowAccuracy.coords.longitude,
         };
+        // Cache it for next time
+        await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
+        return coords;
       }
 
-      console.log('⚠️ Could not get location, using default');
+      console.log('⚠️ Could not get fast location');
       return null;
 
     } catch (error) {
       console.error('Error getting fast location:', error);
       return null;
-    }
-  };
-
-  // Upgrade to medium-high-accuracy GPS in background
-  const upgradeToHighAccuracy = async () => {
-    if (isUpgradingLocation.current) return;
-    isUpgradingLocation.current = true;
-
-    try {
-      console.log('📍 Upgrading to high-accuracy GPS in background...');
-      const highAccuracyLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced
-      });
-
-      if (highAccuracyLocation) {
-        const newLocation = {
-          latitude: highAccuracyLocation.coords.latitude,
-          longitude: highAccuracyLocation.coords.longitude,
-        };
-
-        setUserLocation(newLocation);
-        setLocationAccuracy('medium');
-
-        // Save to cache
-        await AsyncStorage.setItem('lastLocation', JSON.stringify(newLocation));
-
-        // Animate map to new location if significantly different
-        if (mapRef.current) {
-          mapRef.current.animateToRegion({
-            ...newLocation,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 1000);
-        }
-
-        console.log('✅ Upgraded to medium-high-accuracy GPS');
-      }
-    } catch (error) {
-      console.error('Error upgrading to medium-high- accuracy:', error);
-    } finally {
-      isUpgradingLocation.current = false;
     }
   };
 
@@ -381,12 +350,32 @@ export default function MapScreen() {
     }
   };
 
-  // Simplified loading screen
+  // YOUR ORIGINAL LOADING SCREEN WITH DOTS
   if (loading) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#9420ceff" />
         <Text style={styles.loadingText}>{LOADING_MESSAGES[loadingStep]}</Text>
+        {/* Progress dots */}
+        <View style={styles.progressContainer}>
+          {(['auth', 'permissions', 'location', 'tracking'] as LoadingStep[]).map((step, index) => {
+            const steps = ['auth', 'permissions', 'location', 'tracking'];
+            const currentIndex = steps.indexOf(loadingStep);
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+
+            return (
+              <View
+                key={step}
+                style={[
+                  styles.progressDot,
+                  isComplete && styles.progressDotComplete,
+                  isCurrent && styles.progressDotCurrent,
+                ]}
+              />
+            );
+          })}
+        </View>
       </View>
     );
   }
@@ -423,6 +412,8 @@ export default function MapScreen() {
             <View style={styles.userMarker}>
               <View style={[
                 styles.userMarkerInner,
+                // Orange when low accuracy, purple when medium/high
+                locationAccuracy === 'low' && { backgroundColor: '#FFA500' }
               ]} />
             </View>
           </Marker>
@@ -476,10 +467,7 @@ export default function MapScreen() {
           {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
         {locationAccuracy === 'low' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: width * 0.0045}} >
-            <FontAwesome6 name="magnifying-glass-location" size={width * 0.03} color="#f80606ff" />
-            <Text style={styles.statusSubtext}> Improving location...</Text>
-          </View>
+          <Text style={styles.statusSubtext}>📍 Improving accuracy...</Text>
         )}
         {locationAccuracy === 'medium' && friendsArray.length > 0 && (
           <Text style={styles.statusSubtext}>Real-time tracking active</Text>
@@ -509,7 +497,24 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: width * 0.025,
     color: '#9420ceff',
-    fontSize: width * 0.025,
+    fontSize: width * 0.04,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    marginTop: width * 0.05,
+    gap: width * 0.02,
+  },
+  progressDot: {
+    width: width * 0.025,
+    height: width * 0.025,
+    borderRadius: width * 0.0125,
+    backgroundColor: '#e0e0e0',
+  },
+  progressDotComplete: {
+    backgroundColor: '#9420ceff',
+  },
+  progressDotCurrent: {
+    backgroundColor: '#4CAF50',
   },
   searchContainer: {
     position: 'absolute',
@@ -589,8 +594,9 @@ const styles = StyleSheet.create({
     fontSize: width * 0.031,
   },
   statusSubtext: {
-    color: '#f80606ff',
+    color: '#90EE90',
     fontSize: width * 0.022,
+    marginTop: width * 0.0045,
   },
   userMarker: {
     width: width * 0.07,

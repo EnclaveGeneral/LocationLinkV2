@@ -31,12 +31,22 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       const userId = await AsyncStorage.getItem('currentUserId');
       if (userId) {
         try {
+          // Throttle unecessary update
+          const lastUpdateStr = await AsyncStorage.getItem('bgLastDbUpdate');
+          const lastUpdate = lastUpdateStr ? Number(lastUpdateStr) : 0;
+
+          if (Date.now() - lastUpdate < 30000) {
+            return;
+          }
+
           await dataService.updateUser(userId, {
             latitude: coords.latitude,
             longitude: coords.longitude,
             locationUpdatedAt: new Date().toISOString(),
             isLocationSharing: true,
           });
+
+          await AsyncStorage.setItem('bgLastDbUpdate', Date.now().toString());
           console.log('📍 Background location updated');
         } catch (error) {
           console.error('Background location DB update failed:', error);
@@ -52,6 +62,8 @@ export class LocationService {
   private isTracking: boolean = false;
   private lastDbUpdateTime = Date.now();
   private permissionsGranted: boolean | null = null;
+  private hasCalibrated = false;
+  private restartingWatcher = false;
 
   static getInstance(): LocationService {
     if (!LocationService.instance) {
@@ -70,6 +82,8 @@ export class LocationService {
 
   async requestPermissions(): Promise<boolean> {
     // Cache the result to avoid re-requesting
+    this.permissionsGranted = null;
+
     if (this.permissionsGranted !== null) {
       return this.permissionsGranted;
     }
@@ -116,7 +130,7 @@ export class LocationService {
       // Strategy 4: Get low-accuracy location with timeout
       const location = await Promise.race([
         Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Lowest,
+          accuracy: Location.Accuracy.Low,
         }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
       ]);
@@ -135,31 +149,6 @@ export class LocationService {
     }
   }
 
-  // Get medium-high accuracy location after loading initial location
-  async getHighAccuracyLocation(timeoutMs: number = 30000): Promise<{ latitude: number; longitude: number } | null> {
-    try {
-      const location = await Promise.race([
-        Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-      ]);
-
-      if (location && 'coords' in location) {
-        const coords = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        };
-        await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
-        return coords;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error getting high accuracy location:', error);
-      return null;
-    }
-  }
 
   async startLocationTracking(userId: string, onLocationUpdate?: (location: any) => void) {
     if (this.isTracking) {
@@ -172,40 +161,30 @@ export class LocationService {
       throw new Error('Location permission not granted');
     }
 
+
+
     // Store userId for background task access
     await AsyncStorage.setItem('currentUserId', userId);
 
     this.isTracking = true;
 
-    // Start FOREGROUND tracking with balanced accuracy (faster start)
+
+    // Start FOREGROUND tracking with balanced accuracy
     this.locationSubscription = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.Balanced, // Changed from High - faster updates
-        timeInterval: 2000, // Every 2 seconds
-        distanceInterval: 5, // Or every 5 meters
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 3000,
+        distanceInterval: 20,
       },
       async (location) => {
-        const coords = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        };
-
-        // Cache locally
-        await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
-
-        // Throttled DB updates (every 5 seconds)
-        if (Date.now() - this.lastDbUpdateTime >= 5000) {
-          this.lastDbUpdateTime = Date.now();
-          this.updateLocationInDB(userId, coords).catch(err =>
-            console.error('DB update error:', err)
-          );
-        }
-
-        if (onLocationUpdate) {
-          onLocationUpdate(coords);
-        }
+        await this.handleBalancedLocation(
+          location,
+          userId,
+          onLocationUpdate
+        );
       }
     );
+
 
     console.log('✅ Foreground location tracking started');
 
@@ -213,6 +192,82 @@ export class LocationService {
     this.startBackgroundTracking().catch(err =>
       console.error('Background tracking setup error:', err)
     );
+  }
+
+  private async handleBalancedLocation(
+
+    location: Location.LocationObject,
+    userId: string,
+    onLocationUpdate?: (coords: any) => void
+
+  ) {
+    const coords = {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    };
+
+
+    onLocationUpdate?.(coords);
+
+    await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
+
+    // Throttle DB Update now
+    if (Date.now() - this.lastDbUpdateTime >= 5000) {
+      this.lastDbUpdateTime = Date.now();
+      this.updateLocationInDB(userId, coords).catch(console.error);
+    }
+
+    // Calibration Checks
+    const isGpsQualityFix =
+      !this.hasCalibrated &&
+      !this.restartingWatcher &&
+      location.coords.accuracy != null &&
+      location.coords.accuracy < 50;
+
+    if (isGpsQualityFix) {
+      console.log('🎯 Balanced GPS fix detected — recalibrating watcher');
+      this.hasCalibrated = true;
+      this.restartingWatcher = true;
+
+      await this.restartBalancedWatcher(userId, onLocationUpdate);
+      this.restartingWatcher = false;
+    }
+
+  }
+
+  private async restartBalancedWatcher(
+    userId: string,
+    onLocationUpdate?: (coords : any) => void
+  ) {
+    if (this.locationSubscription) {
+      this.locationSubscription.remove();
+      this.locationSubscription = null;
+    }
+
+    this.locationSubscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 5000,
+        distanceInterval: 10,
+      },
+      async (location) => {
+        const coords = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+
+        onLocationUpdate?.(coords);
+        await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
+
+        if (Date.now() - this.lastDbUpdateTime >= 5000) {
+          this.lastDbUpdateTime = Date.now();
+          this.updateLocationInDB(userId, coords).catch(console.error);
+        }
+      }
+    );
+
+    console.log('✅ Balanced watcher recalibrated');
+
   }
 
   private async startBackgroundTracking() {
