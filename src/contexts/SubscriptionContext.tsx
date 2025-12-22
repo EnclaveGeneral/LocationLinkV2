@@ -212,7 +212,13 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
             if (index !== -1) {
               const newFriends = [...prev];
               // Preserve existing avatarUrl if present
-              newFriends[index] = { ...updatedUser, avatarUrl: prev[index].avatarUrl };
+              newFriends[index] = {
+                ...prev[index],
+                ...updatedUser,
+                // ✅ Prevent undefined/stale overrides
+                isLocationSharing:
+                  updatedUser.isLocationSharing ?? prev[index].isLocationSharing,
+              };
               updateFriendsState(newFriends);
               return newFriends;
             }
@@ -332,7 +338,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         wsService.disconnect();
       }
     };
-  }, [loadAllData, updateFriendsState]);
+  }, []);
 
   return (
     <SubscriptionContext.Provider value={{

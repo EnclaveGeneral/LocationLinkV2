@@ -47,7 +47,15 @@ export default function ProfileScreen() {
      if (currentUser) {
       const userData = await dataService.getUser(currentUser.userId);
       setUser(userData);
-      setIsLocationSharing(userData?.isLocationSharing || false);
+      setIsLocationSharing(!!userData?.isLocationSharing);
+
+      // ✅ REHYDRATE location tracking from backend intent
+      const locationService = LocationService.getInstance();
+      if (userData?.isLocationSharing) {
+        await locationService.startLocationTracking(userData.id);
+      } else {
+        await locationService.stopLocationTracking();
+      }
 
       if (userData?.avatarKey) {
         await loadAvatar(userData.avatarKey);  // ✅ Pass the key directly
@@ -62,29 +70,37 @@ export default function ProfileScreen() {
   const toggleLocationSharing = async (value: boolean) => {
     if (!user) return;
 
-    setIsLocationSharing(value);
     setLoading(true);
 
     try {
-      const locationService = LocationService.getInstance();
+      // 1️⃣ Update backend FIRST (source of truth)
+      await dataService.updateUser(user.id, {
+        isLocationSharing: value,
+      });
 
+      // 2️⃣ Start/stop tracking AFTER backend confirms
+      const locationService = LocationService.getInstance();
       if (value) {
         await locationService.startLocationTracking(user.id);
       } else {
         await locationService.stopLocationTracking();
       }
 
-      await dataService.updateUser(user.id, {
-        isLocationSharing: value,
-      });
+      // 3️⃣ Update UI LAST
+      setIsLocationSharing(value);
+
     } catch (error) {
+      console.error('Toggle location sharing error:', error);
+
       setModalVisible(true);
       setModalContent({
         type: 'error',
         title: 'Update Failure',
-        message: 'Failed to update location sharing'
+        message: 'Failed to update location sharing',
       });
-      setIsLocationSharing(!value);
+
+      // Roll back UI state
+      setIsLocationSharing(prev => !prev);
     } finally {
       setLoading(false);
     }

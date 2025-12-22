@@ -1,4 +1,11 @@
-// src/screens/MapScreen.tsx - OPTIMIZED FOR REAL DEVICES WITH LOADING DOTS
+// src/screens/MapScreen.tsx - OPTIMIZED WITH DARK MODE
+//
+// Changes:
+// - Dark mode support
+// - Syncs with user's isLocationSharing setting from DB
+// - Uses LocationService properly
+// - Fixed accuracy handling
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -10,19 +17,65 @@ import {
   Dimensions,
   Animated,
   Easing,
-  Image
+  Image,
+  useColorScheme,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LocationService } from '../services/locationService';
+import { LocationService, LocationUpdate } from '../services/locationService';
 import { authService } from '../services/authService';
+import { dataService } from '../services/dataService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
-const { height, width } = Dimensions.get('screen');
+const { width } = Dimensions.get('screen');
+
+// ============================================
+// THEME COLORS
+// ============================================
+const LIGHT_THEME = {
+  background: '#ffffff',
+  surface: '#ffffff',
+  text: '#333333',
+  textSecondary: '#666666',
+  primary: '#9420ceff',
+  primaryLight: 'rgba(148, 32, 206, 0.1)',
+  accent: '#4709b1ff',
+  statusBar: 'rgba(117, 9, 167, 1)',
+  statusText: '#ffffff',
+  statusSubtext: '#90EE90',
+  searchBg: '#ffffff',
+  searchText: '#9420ceff',
+  searchPlaceholder: '#999999',
+  buttonBg: '#ffffff',
+  shadow: '#000000',
+  lowAccuracyColor: '#FFA500',
+  highAccuracyColor: '#b133f0ff',
+  userMarkerBg: 'rgba(109, 74, 255, 0.22)',
+};
+
+const DARK_THEME = {
+  background: '#121212',
+  surface: '#1E1E1E',
+  text: '#E0E0E0',
+  textSecondary: '#A0A0A0',
+  primary: '#BB86FC',
+  primaryLight: 'rgba(187, 134, 252, 0.15)',
+  accent: '#BB86FC',
+  statusBar: 'rgba(30, 30, 30, 0.95)',
+  statusText: '#E0E0E0',
+  statusSubtext: '#90EE90',
+  searchBg: '#2D2D2D',
+  searchText: '#BB86FC',
+  searchPlaceholder: '#888888',
+  buttonBg: '#2D2D2D',
+  shadow: '#000000',
+  lowAccuracyColor: '#FFB74D',
+  highAccuracyColor: '#BB86FC',
+  userMarkerBg: 'rgba(187, 134, 252, 0.25)',
+};
 
 const MARKER_COLORS = [
   '#4CAF50', '#2196F3', '#9C27B0', '#FF9800',
@@ -77,7 +130,7 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
   );
 };
 
-// Loading steps - YOUR ORIGINAL with dots
+// Loading steps
 type LoadingStep = 'auth' | 'permissions' | 'location' | 'tracking' | 'done';
 
 const LOADING_MESSAGES: Record<LoadingStep, string> = {
@@ -95,16 +148,22 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.05,
 };
 
+const GOOD_ACCURACY_THRESHOLD = 50;
+
 export default function MapScreen() {
+  // Theme
+  const colorScheme = useColorScheme();
+  const theme = colorScheme === 'dark' ? DARK_THEME : LIGHT_THEME;
+
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState(DEFAULT_REGION);
-  const [userLocation, setUserLocation] = useState<any>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
   const [searchText, setSearchText] = useState('');
-  const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'medium'>('low');
+  const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'high'>('low');
   const animatedFriends = useRef(new Map()).current;
-  const { friends, friendsMap, friendsOnline, forceReload } = useSubscriptions();
+  const { friendsMap, forceReload } = useSubscriptions();
   const [showModal, setShowModal] = useState(false);
   const [modalStats, setModalStats] = useState({
     type: 'error' as 'error' | 'success' | 'confirm',
@@ -113,9 +172,14 @@ export default function MapScreen() {
   });
 
   const userIdRef = useRef<string | null>(null);
+  const locationServiceRef = useRef<LocationService | null>(null);
 
   useEffect(() => {
-    initializeMapFast();
+    initializeMap();
+
+    return () => {
+      // Cleanup handled by LocationService singleton
+    };
   }, []);
 
   const friendsArray = useMemo(() => {
@@ -124,14 +188,15 @@ export default function MapScreen() {
     );
   }, [friendsMap]);
 
+  // Animate friend markers
   useEffect(() => {
     friendsMap.forEach(friend => {
-      if (
-        friend.isLocationSharing &&
-        friend.latitude != null &&
-        friend.longitude != null &&
-        !animatedFriends.has(friend.id)
-      ) {
+      if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
+        animatedFriends.delete(friend.id);
+        return;
+      }
+
+      if (!animatedFriends.has(friend.id)) {
         animatedFriends.set(friend.id, {
           coordinate: new AnimatedRegion({
             latitude: friend.latitude,
@@ -141,16 +206,10 @@ export default function MapScreen() {
           }),
           lastTime: Date.now(),
         });
-      }
-
-      if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
-        animatedFriends.delete(friend.id);
         return;
       }
 
       const curFriendEntry = animatedFriends.get(friend.id);
-      if (!curFriendEntry) return;
-
       const now = Date.now();
       const duration = Math.min(1500, Math.max(500, now - curFriendEntry.lastTime));
       curFriendEntry.lastTime = now;
@@ -169,10 +228,15 @@ export default function MapScreen() {
     };
   }, [friendsMap]);
 
-  // OPTIMIZED: Fast initialization - show map ASAP
-  const initializeMapFast = async () => {
+  // ============================================
+  // INITIALIZATION
+  // ============================================
+  const initializeMap = async () => {
     const startTime = Date.now();
-    console.log('🗺️ Starting FAST map initialization...');
+    console.log('🗺️ Starting map initialization...');
+
+    const locationService = LocationService.getInstance();
+    locationServiceRef.current = locationService;
 
     try {
       // STEP 1: Auth check
@@ -185,9 +249,13 @@ export default function MapScreen() {
         return;
       }
       userIdRef.current = user.userId;
-      console.log(`📍 Auth complete (${Date.now() - startTime}ms)`);
+      console.log(`✅ Auth complete (${Date.now() - startTime}ms)`);
 
-      // STEP 2: Permission check
+      // STEP 2: Check user's location sharing setting from DB
+      const userData = await dataService.getUser(user.userId);
+      const shouldShareLocation = userData?.isLocationSharing ?? true;
+
+      // STEP 3: Permission check
       setLoadingStep('permissions');
       const { status } = await Location.requestForegroundPermissionsAsync();
 
@@ -202,41 +270,44 @@ export default function MapScreen() {
         setLoading(false);
         return;
       }
-      console.log(`📍 Permissions granted (${Date.now() - startTime}ms)`);
+      console.log(`✅ Permissions granted (${Date.now() - startTime}ms)`);
 
-      // STEP 3: Get initial location FAST
+      // STEP 4: Get initial location FAST
       setLoadingStep('location');
-      const initialLocation = await getFastLocation();
+      const initialLocation = await locationService.getFastLocation();
 
       if (initialLocation) {
-        console.log(`📍 Got initial location in ${Date.now() - startTime}ms`);
-        setUserLocation(initialLocation);
+        console.log(`✅ Got initial location in ${Date.now() - startTime}ms`);
+        setUserLocation({
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
+        });
         setRegion({
-          ...initialLocation,
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         });
+
+        if (initialLocation.accuracy != null && initialLocation.accuracy < GOOD_ACCURACY_THRESHOLD) {
+          setLocationAccuracy('high');
+        }
       }
 
-      // STEP 4: Show "tracking" briefly then show map
+      // STEP 5: Show map
       setLoadingStep('tracking');
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-      // ⚡ KEY FIX: Don't wait for tracking to start - show map immediately!
-      // Use a short delay just to show the step visually
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // STEP 5: SHOW THE MAP NOW!
       setLoadingStep('done');
       setLoading(false);
       console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
 
-      // STEP 6: Start location tracking in BACKGROUND (fire and forget)
-      startTrackingInBackground(user.userId);
-
-      // Request background permissions in background too
-      Location.requestBackgroundPermissionsAsync()
-        .then(({ status }) => console.log('Background permission:', status))
-        .catch(console.error);
+      // STEP 6: Start tracking ONLY if user has location sharing enabled
+      if (shouldShareLocation) {
+        startTracking(user.userId);
+      } else {
+        console.log('📍 Location sharing disabled by user preference');
+      }
 
     } catch (error) {
       console.error('Error initializing map:', error);
@@ -244,75 +315,29 @@ export default function MapScreen() {
     }
   };
 
-  // Start tracking without blocking the UI
-  const startTrackingInBackground = (userId: string) => {
+  // ============================================
+  // TRACKING
+  // ============================================
+  const startTracking = (userId: string) => {
     const locationService = LocationService.getInstance();
 
-    locationService.startLocationTracking(userId, (newLocation) => {
-      setUserLocation(newLocation);
-
-      if (newLocation.accuracy != null && newLocation.accuracy < 50) {
-        setLocationAccuracy('medium');
-      }
-
-    }).catch(err => console.error('Location tracking error:', err));
-  };
-
-  // Get location as fast as possible
-  const getFastLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
-    try {
-      // Strategy 1: Try cached location (instant!)
-      const cachedStr = await AsyncStorage.getItem('lastLocation');
-      if (cachedStr) {
-        console.log('📍 Using cached location from storage');
-        setLocationAccuracy('low');
-        return JSON.parse(cachedStr);
-      }
-
-      // Strategy 2: Try getLastKnownPositionAsync (very fast)
-      const lastKnown = await Location.getLastKnownPositionAsync({
-        maxAge: 10 * 60 * 1000, // Accept up to 10 minutes old
+    locationService.startLocationTracking(userId, (location: LocationUpdate) => {
+      setUserLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
       });
 
-      if (lastKnown) {
-        console.log('📍 Using last known position');
-        setLocationAccuracy('low');
-        return {
-          latitude: lastKnown.coords.latitude,
-          longitude: lastKnown.coords.longitude,
-        };
+      if (location.accuracy != null && location.accuracy < GOOD_ACCURACY_THRESHOLD) {
+        setLocationAccuracy('high');
       }
-
-      // Strategy 3: Get LOW accuracy location with short timeout
-      console.log('📍 Getting low-accuracy location...');
-      const lowAccuracy = await Promise.race([
-        Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Low, // Cell/WiFi - fast
-        }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]);
-
-      if (lowAccuracy && 'coords' in lowAccuracy) {
-        console.log('📍 Got low-accuracy location');
-        setLocationAccuracy('low');
-        const coords = {
-          latitude: lowAccuracy.coords.latitude,
-          longitude: lowAccuracy.coords.longitude,
-        };
-        // Cache it for next time
-        await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
-        return coords;
-      }
-
-      console.log('⚠️ Could not get fast location');
-      return null;
-
-    } catch (error) {
-      console.error('Error getting fast location:', error);
-      return null;
-    }
+    }).catch(err => {
+      console.error('Location tracking error:', err);
+    });
   };
 
+  // ============================================
+  // SEARCH & NAVIGATION
+  // ============================================
   const searchFriend = () => {
     if (!searchText.trim()) return;
 
@@ -350,13 +375,16 @@ export default function MapScreen() {
     }
   };
 
-  // YOUR ORIGINAL LOADING SCREEN WITH DOTS
+  // ============================================
+  // LOADING SCREEN
+  // ============================================
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#9420ceff" />
-        <Text style={styles.loadingText}>{LOADING_MESSAGES[loadingStep]}</Text>
-        {/* Progress dots */}
+      <View style={[styles.centerContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.loadingText, { color: theme.primary }]}>
+          {LOADING_MESSAGES[loadingStep]}
+        </Text>
         <View style={styles.progressContainer}>
           {(['auth', 'permissions', 'location', 'tracking'] as LoadingStep[]).map((step, index) => {
             const steps = ['auth', 'permissions', 'location', 'tracking'];
@@ -369,8 +397,9 @@ export default function MapScreen() {
                 key={step}
                 style={[
                   styles.progressDot,
-                  isComplete && styles.progressDotComplete,
-                  isCurrent && styles.progressDotCurrent,
+                  { backgroundColor: theme.textSecondary },
+                  isComplete && { backgroundColor: theme.primary },
+                  isCurrent && { backgroundColor: '#4CAF50' },
                 ]}
               />
             );
@@ -380,22 +409,28 @@ export default function MapScreen() {
     );
   }
 
+  // ============================================
+  // MAP VIEW
+  // ============================================
   return (
     <View style={styles.container}>
+      {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
+        <View style={[styles.searchBar, { backgroundColor: theme.searchBg }]}>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.searchText }]}
             placeholder="Search friend..."
+            placeholderTextColor={theme.searchPlaceholder}
             value={searchText}
             onChangeText={setSearchText}
             onSubmitEditing={searchFriend}
           />
-          <Ionicons name="search" size={width * 0.05} color="#4709b1ff" />
+          <Ionicons name="search" size={width * 0.05} color={theme.accent} />
         </View>
         <WebSocketIndicator />
       </View>
 
+      {/* Map */}
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -403,24 +438,27 @@ export default function MapScreen() {
         initialRegion={region}
         showsUserLocation={false}
       >
+        {/* User Marker */}
         {userLocation && (
           <Marker
             coordinate={userLocation}
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
           >
-            <View style={styles.userMarker}>
+            <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
               <View style={[
                 styles.userMarkerInner,
-                // Orange when low accuracy, purple when medium/high
-                locationAccuracy === 'low' && { backgroundColor: '#FFA500' }
+                { backgroundColor: locationAccuracy === 'low' ? theme.lowAccuracyColor : theme.highAccuracyColor }
               ]} />
             </View>
           </Marker>
         )}
 
+        {/* Friend Markers */}
         {Array.from(friendsMap.values()).map(friend => {
-          if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) return null;
+          if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
+            return null;
+          }
 
           if (!animatedFriends.has(friend.id)) {
             animatedFriends.set(friend.id, {
@@ -448,32 +486,43 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
-        <Ionicons name="locate" size={width * 0.06} color="#9420ceff" />
+      {/* Center on User Button */}
+      <TouchableOpacity
+        style={[styles.centerButton, { backgroundColor: theme.buttonBg }]}
+        onPress={centerOnUser}
+      >
+        <Ionicons name="locate" size={width * 0.06} color={theme.primary} />
       </TouchableOpacity>
 
+      {/* Refresh Button */}
       <TouchableOpacity
-        style={styles.refreshButton}
+        style={[styles.refreshButton, { backgroundColor: theme.buttonBg }]}
         onPress={async () => {
           await forceReload();
           console.log('🔄 Manual refresh triggered');
         }}
       >
-        <Ionicons name="refresh" size={width * 0.06} color="#9420ceff" />
+        <Ionicons name="refresh" size={width * 0.06} color={theme.primary} />
       </TouchableOpacity>
 
-      <View style={styles.statusBar}>
-        <Text style={styles.statusText}>
+      {/* Status Bar */}
+      <View style={[styles.statusBar, { backgroundColor: theme.statusBar }]}>
+        <Text style={[styles.statusText, { color: theme.statusText }]}>
           {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
         {locationAccuracy === 'low' && (
-          <Text style={styles.statusSubtext}>📍 Improving accuracy...</Text>
+          <Text style={[styles.statusSubtext, { color: theme.statusSubtext }]}>
+            📍 Improving accuracy...
+          </Text>
         )}
-        {locationAccuracy === 'medium' && friendsArray.length > 0 && (
-          <Text style={styles.statusSubtext}>Real-time tracking active</Text>
+        {locationAccuracy === 'high' && friendsArray.length > 0 && (
+          <Text style={[styles.statusSubtext, { color: theme.statusSubtext }]}>
+            Real-time tracking active
+          </Text>
         )}
       </View>
 
+      {/* Modal */}
       <CustomModal
         visible={showModal}
         title={modalStats.title}
@@ -496,7 +545,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: width * 0.025,
-    color: '#9420ceff',
     fontSize: width * 0.04,
   },
   progressContainer: {
@@ -508,13 +556,6 @@ const styles = StyleSheet.create({
     width: width * 0.025,
     height: width * 0.025,
     borderRadius: width * 0.0125,
-    backgroundColor: '#e0e0e0',
-  },
-  progressDotComplete: {
-    backgroundColor: '#9420ceff',
-  },
-  progressDotCurrent: {
-    backgroundColor: '#4CAF50',
   },
   searchContainer: {
     position: 'absolute',
@@ -530,7 +571,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
     borderRadius: width * 0.04,
     paddingHorizontal: width * 0.02,
     shadowColor: '#000',
@@ -543,7 +583,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: width * 0.10,
     marginLeft: width * 0.02,
-    color: '#9420ceff'
   },
   map: {
     flex: 1,
@@ -555,7 +594,6 @@ const styles = StyleSheet.create({
     width: width * 0.112,
     height: width * 0.112,
     borderRadius: width * 0.056,
-    backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -571,7 +609,6 @@ const styles = StyleSheet.create({
     width: width * 0.112,
     height: width * 0.112,
     borderRadius: width * 0.056,
-    backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -584,17 +621,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: width * 0.02,
     right: width * 0.01,
-    backgroundColor: 'rgba(117, 9, 167, 1)',
     paddingHorizontal: width * 0.033,
     paddingVertical: width * 0.018,
     borderRadius: width * 0.045,
   },
   statusText: {
-    color: 'white',
     fontSize: width * 0.031,
   },
   statusSubtext: {
-    color: '#90EE90',
     fontSize: width * 0.022,
     marginTop: width * 0.0045,
   },
@@ -602,7 +636,6 @@ const styles = StyleSheet.create({
     width: width * 0.07,
     height: width * 0.07,
     borderRadius: width * 0.035,
-    backgroundColor: 'rgba(109, 74, 255, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -610,7 +643,6 @@ const styles = StyleSheet.create({
     width: width * 0.03,
     height: width * 0.03,
     borderRadius: width * 0.015,
-    backgroundColor: '#b133f0ff',
   },
   friendMarker: {
     width: width * 0.08,
