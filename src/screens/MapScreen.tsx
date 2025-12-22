@@ -434,6 +434,7 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        toolbarEnabled={false}
         style={styles.map}
         initialRegion={region}
         showsUserLocation={false}
