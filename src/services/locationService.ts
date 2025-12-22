@@ -299,7 +299,7 @@ export class LocationService {
   }
 
   // Stop tracking
-  async stopLocationTracking(): Promise<void> {
+  async stopLocationTracking(updateDb: boolean = false): Promise<void> {
     if (this.locationSubscription) {
       this.locationSubscription.remove();
       this.locationSubscription = null;
@@ -316,7 +316,7 @@ export class LocationService {
     }
 
     // **FIX: Set isLocationSharing=false in DB when stopping**
-    if (this.userId) {
+    if (updateDb && this.userId) {
       try {
         await dataService.updateUser(this.userId, {
           isLocationSharing: false,

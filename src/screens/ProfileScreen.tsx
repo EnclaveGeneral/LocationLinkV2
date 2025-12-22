@@ -47,7 +47,7 @@ export default function ProfileScreen() {
      if (currentUser) {
       const userData = await dataService.getUser(currentUser.userId);
       setUser(userData);
-      setIsLocationSharing(!!userData?.isLocationSharing);
+      setIsLocationSharing(userData?.isLocationSharing ?? false);
 
       // ✅ REHYDRATE location tracking from backend intent
       const locationService = LocationService.getInstance();
@@ -109,13 +109,9 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     try {
       const locationService = LocationService.getInstance();
-      await locationService.stopLocationTracking();
 
-      if (user) {
-        await dataService.updateUser(user.id, {
-          isLocationSharing: false,
-        });
-      }
+      await locationService.stopLocationTracking(true);
+
 
       await authService.signOut();
       router.replace('/signin');
