@@ -1,4 +1,10 @@
-// src/screens/MapScreen.tsx
+// src/screens/MapScreen.tsx - OPTIMIZED FOR REAL DEVICES
+// Key changes:
+// 1. Use low-accuracy location first for instant map display
+// 2. Upgrade to high-accuracy GPS in background
+// 3. Use cached location as fallback
+// 4. Parallelize initialization where possible
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -13,56 +19,43 @@ import {
   Image
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
+import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocationService } from '../services/locationService';
 import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
 const { height, width } = Dimensions.get('screen');
 
 const MARKER_COLORS = [
-  '#4CAF50', // Green
-  '#2196F3', // Blue
-  '#9C27B0', // Purple
-  '#FF9800', // Orange
-  '#E91E63', // Pink
-  '#00BCD4', // Cyan
-  '#FF5722', // Deep Orange
-  '#673AB7', // Deep Purple
+  '#4CAF50', '#2196F3', '#9C27B0', '#FF9800',
+  '#E91E63', '#00BCD4', '#FF5722', '#673AB7',
 ];
 
 const getRandomColor = (oderId: string) => {
-  // Generate a color based on friend ID
   let hash = 0;
-  for (let i = 0 ; i < oderId.length; i++) {
+  for (let i = 0; i < oderId.length; i++) {
     hash = oderId.charCodeAt(i) + ((hash << 5) - hash);
   }
   return MARKER_COLORS[Math.abs(hash) % MARKER_COLORS.length];
-}
+};
 
 const FriendMarker = ({ friend, coordinate, color }: any) => {
-  // FIX 2: specific state to track image loading
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
-    // Stop tracking changes after a delay to save battery/performance
-    // but give the image time to render first
     if (!friend.avatarUrl) {
-        const timer = setTimeout(() => {
-            setTracksViewChanges(false);
-        }, 500);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => setTracksViewChanges(false), 500);
+      return () => clearTimeout(timer);
     }
   }, [friend.avatarUrl]);
 
-
   const onImageLoad = () => {
-    // Once image loads, allow one more render cycle then freeze
-    setTimeout(() => {
-      setTracksViewChanges(false);
-    }, 100);
+    setTimeout(() => setTracksViewChanges(false), 100);
   };
 
   return (
@@ -70,12 +63,10 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
       coordinate={coordinate}
       title={friend.username}
       anchor={{ x: 0.5, y: 0.5 }}
-      // Use the dynamic state here
       tracksViewChanges={tracksViewChanges}
     >
-
       {friend.avatarUrl ? (
-        <View style={[styles.friendMarker, { backgroundColor: 'transparent'}]}>
+        <View style={[styles.friendMarker, { backgroundColor: 'transparent' }]}>
           <Image
             source={{ uri: friend.avatarUrl }}
             style={{ width: width * 0.1, height: width * 0.1, borderRadius: width * 0.05 }}
@@ -89,35 +80,34 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
           </Text>
         </View>
       )}
-
     </Marker.Animated>
   );
 };
 
-// NEW: Loading step type for progress indicator
-type LoadingStep = 'auth' | 'permissions' | 'location' | 'tracking' | 'done';
+type LoadingStep = 'init' | 'location' | 'done';
 
 const LOADING_MESSAGES: Record<LoadingStep, string> = {
-  auth: 'Checking authentication...',
-  permissions: 'Requesting location permissions...',
-  location: 'Getting your location...',
-  tracking: 'Starting location tracking...',
+  init: 'Setting up...',
+  location: 'Finding your location...',
   done: 'Map ready!',
 };
 
+// DEFAULT LOCATION (use if all else fails - center of US)
+const DEFAULT_REGION = {
+  latitude: 39.8283,
+  longitude: -98.5795,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
 
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
-  const [region, setRegion] = useState({
-    latitude: 37.78825,
-    longitude: -122.4324,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
+  const [region, setRegion] = useState(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
+  const [loadingStep, setLoadingStep] = useState<LoadingStep>('init');
   const [searchText, setSearchText] = useState('');
+  const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'medium'>('low');
   const animatedFriends = useRef(new Map()).current;
   const { friends, friendsMap, friendsOnline, forceReload } = useSubscriptions();
   const [showModal, setShowModal] = useState(false);
@@ -125,25 +115,23 @@ export default function MapScreen() {
     type: 'error' as 'error' | 'success' | 'confirm',
     title: '',
     message: ''
-  })
+  });
+
+  // Track if high-accuracy location is being fetched
+  const isUpgradingLocation = useRef(false);
 
   useEffect(() => {
-    initializeMap();
+    initializeMapFast();
   }, []);
 
-  // Get friends array from map, filter for those sharing location
   const friendsArray = useMemo(() => {
     return Array.from(friendsMap.values()).filter(
       f => f.isLocationSharing && f.latitude != null && f.longitude != null
     );
   }, [friendsMap]);
 
-  // Update front end locations everytime the backend location changes!
   useEffect(() => {
-    console.log('🗺️ MapScreen - friendsMap updated:', friendsMap.size, 'friends');
-
     friendsMap.forEach(friend => {
-      // First, ensure all new friends have an animated location object if they are added!
       if (
         friend.isLocationSharing &&
         friend.latitude != null &&
@@ -161,16 +149,13 @@ export default function MapScreen() {
         });
       }
 
-      // We need to terminate animations for friends who have stopped sharing locations
       if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
         animatedFriends.delete(friend.id);
         return;
       }
 
       const curFriendEntry = animatedFriends.get(friend.id);
-      if (!curFriendEntry) {
-        return;
-      }
+      if (!curFriendEntry) return;
 
       const now = Date.now();
       const duration = Math.min(1500, Math.max(500, now - curFriendEntry.lastTime));
@@ -186,70 +171,181 @@ export default function MapScreen() {
     });
 
     return () => {
-      // Delete all animations so that our current map is clean when we switch tabs
       animatedFriends.clear();
-    }
-
+    };
   }, [friendsMap]);
 
-  const initializeMap = async () => {
+  // OPTIMIZED: Fast initialization strategy
+  const initializeMapFast = async () => {
+    const startTime = Date.now();
+    console.log('🗺️ Starting FAST map initialization...');
+
     try {
-      setLoadingStep('auth');
-      const user = await authService.getCurrentUser();
+      // STEP 1: Check auth and permissions in parallel
+      setLoadingStep('init');
+
+      const [user, permissionResponse] = await Promise.all([
+        authService.getCurrentUser(),
+        Location.requestForegroundPermissionsAsync(),
+      ]);
+
       if (!user) {
         console.error('No user found');
         setLoading(false);
         return;
       }
-      // Start location tracking
-      setLoadingStep('permissions');
-      const locationService = LocationService.getInstance();
-      const hasPermission = await locationService.requestPermissions();
 
-      if (hasPermission) {
-        setLoadingStep('location');
-        const location = await locationService.getCurrentLocation();
+      const hasPermission = permissionResponse.status === 'granted';
+
+      if (!hasPermission) {
+        console.log('⚠️ Location permission not granted');
+        setModalStats({
+          type: 'error',
+          title: 'Location Permission Required',
+          message: 'Location permission is required to show your position on the map.'
+        });
+        setShowModal(true);
+        setLoading(false);
+        return;
+      }
+
+      setLoadingStep('location');
+
+      // STEP 2: Try to get location FAST using multiple strategies in parallel
+      const location = await getFastLocation();
+
+      if (location) {
+        console.log(`📍 Got location in ${Date.now() - startTime}ms (accuracy: ${locationAccuracy})`);
         setUserLocation(location);
         setRegion({
           ...location,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         });
-
-        setLoadingStep('tracking');
-        await locationService.startLocationTracking(user.userId, (newLocation) => {
-          setUserLocation(newLocation);
-        });
-      } else {
-        console.log('⚠️ Location permission not granted');
-        // Still show map, just without user location
-        setModalStats({
-          type: 'error',
-          title: 'Permission Required',
-          message: 'Location permission is required to show your position on the map. You can still see your friends\' locations.'
-        });
-        setShowModal(true);
       }
 
+      // STEP 3: Show the map immediately!
       setLoadingStep('done');
+      setLoading(false);
+      console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
+
+      // STEP 4: Start location tracking in background (don't await!)
+      const locationService = LocationService.getInstance();
+      locationService.startLocationTracking(user.userId, (newLocation) => {
+        setUserLocation(newLocation);
+        setLocationAccuracy('medium');
+      }).catch(err => console.error('Location tracking error:', err));
+
+      // STEP 5: If we got a low-accuracy location, upgrade to high-accuracy in background
+      if (locationAccuracy === 'low' && !isUpgradingLocation.current) {
+        upgradeToHighAccuracy();
+      }
+
     } catch (error) {
       console.error('Error initializing map:', error);
-    } finally {
       setLoading(false);
+    }
+  };
+
+  // Get location as fast as possible using multiple strategies
+  const getFastLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
+    try {
+      // Strategy 1: Try to get cached location from AsyncStorage (instant!)
+      const cachedLocationStr = await AsyncStorage.getItem('lastLocation');
+      let cachedLocation = cachedLocationStr ? JSON.parse(cachedLocationStr) : null;
+
+      // Strategy 2: Try getLastKnownPositionAsync (very fast, might be stale)
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: 5 * 60 * 1000, // Accept locations up to 5 minutes old
+      });
+
+      if (lastKnown) {
+        console.log('📍 Using last known position (fast!)');
+        setLocationAccuracy('low');
+        return {
+          latitude: lastKnown.coords.latitude,
+          longitude: lastKnown.coords.longitude,
+        };
+      }
+
+      // Strategy 3: If we have cached location, use it while getting fresh location
+      if (cachedLocation) {
+        console.log('📍 Using cached location from storage');
+        setLocationAccuracy('low');
+        return cachedLocation;
+      }
+
+      // Strategy 4: Get a LOW accuracy location (fast - uses cell/wifi, not GPS)
+      console.log('📍 Getting low-accuracy location...');
+      const lowAccuracyLocation = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest, // Cell tower / WiFi - very fast!
+        }),
+        // Timeout after 5 seconds
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+
+      if (lowAccuracyLocation && typeof lowAccuracyLocation === 'object' && 'coords' in lowAccuracyLocation) {
+        console.log('📍 Got low-accuracy location');
+        setLocationAccuracy('low');
+        return {
+          latitude: lowAccuracyLocation.coords.latitude,
+          longitude: lowAccuracyLocation.coords.longitude,
+        };
+      }
+
+      console.log('⚠️ Could not get location, using default');
+      return null;
+
+    } catch (error) {
+      console.error('Error getting fast location:', error);
+      return null;
+    }
+  };
+
+  // Upgrade to medium-high-accuracy GPS in background
+  const upgradeToHighAccuracy = async () => {
+    if (isUpgradingLocation.current) return;
+    isUpgradingLocation.current = true;
+
+    try {
+      console.log('📍 Upgrading to high-accuracy GPS in background...');
+      const highAccuracyLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+
+      if (highAccuracyLocation) {
+        const newLocation = {
+          latitude: highAccuracyLocation.coords.latitude,
+          longitude: highAccuracyLocation.coords.longitude,
+        };
+
+        setUserLocation(newLocation);
+        setLocationAccuracy('medium');
+
+        // Save to cache
+        await AsyncStorage.setItem('lastLocation', JSON.stringify(newLocation));
+
+        // Animate map to new location if significantly different
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            ...newLocation,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
+
+        console.log('✅ Upgraded to medium-high-accuracy GPS');
+      }
+    } catch (error) {
+      console.error('Error upgrading to medium-high- accuracy:', error);
+    } finally {
+      isUpgradingLocation.current = false;
     }
   };
 
   const searchFriend = () => {
     if (!searchText.trim()) return;
-
-
-    console.log('🗺️ MapScreen rendering:', {
-      friendsCount: friends.length,
-      mapSize: friendsMap.size,
-      visibleOnMap: friendsArray.length,
-      online: friendsOnline,
-    });
-
 
     const friend = friendsArray.find(f =>
       f.username.toLowerCase().includes(searchText.toLowerCase())
@@ -268,7 +364,7 @@ export default function MapScreen() {
       setModalStats({
         type: 'error',
         title: 'Search Failure',
-        message: 'Failure to find and locate friends in near proximity'
+        message: 'Could not find friend on map'
       });
       setShowModal(true);
     }
@@ -285,39 +381,15 @@ export default function MapScreen() {
     }
   };
 
-  // NEW: Improved loading screen with progress
+  // Simplified loading screen
   if (loading) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#9420ceff" />
         <Text style={styles.loadingText}>{LOADING_MESSAGES[loadingStep]}</Text>
-        {/* Progress dots */}
-        <View style={styles.progressContainer}>
-          {(['auth', 'permissions', 'location', 'tracking'] as LoadingStep[]).map((step, index) => {
-            const steps = ['auth', 'permissions', 'location', 'tracking'];
-            const currentIndex = steps.indexOf(loadingStep);
-            const isComplete = index < currentIndex;
-            const isCurrent = index === currentIndex;
-
-            return (
-              <View
-                key={step}
-                style={[
-                  styles.progressDot,
-                  isComplete && styles.progressDotComplete,
-                  isCurrent && styles.progressDotCurrent,
-                ]}
-              />
-            );
-          })}
-        </View>
       </View>
     );
   }
-
-
-
-  console.log('🗺️ MapScreen rendering:', friendsArray.length, 'friends visible on map');
 
   return (
     <View style={styles.container}>
@@ -338,8 +410,6 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        customMapStyle={[]}
-        toolbarEnabled={false}
         style={styles.map}
         initialRegion={region}
         showsUserLocation={false}
@@ -351,7 +421,9 @@ export default function MapScreen() {
             tracksViewChanges={false}
           >
             <View style={styles.userMarker}>
-              <View style={styles.userMarkerInner} />
+              <View style={[
+                styles.userMarkerInner,
+              ]} />
             </View>
           </Marker>
         )}
@@ -359,8 +431,6 @@ export default function MapScreen() {
         {Array.from(friendsMap.values()).map(friend => {
           if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) return null;
 
-          // Immediate render the object
-          // Don't wait for useEffect, or the first render will always be null.
           if (!animatedFriends.has(friend.id)) {
             animatedFriends.set(friend.id, {
               coordinate: new AnimatedRegion({
@@ -378,10 +448,10 @@ export default function MapScreen() {
 
           return (
             <FriendMarker
-                key={friend.id}
-                friend={friend}
-                coordinate={anim.coordinate}
-                color={markerColor}
+              key={friend.id}
+              friend={friend}
+              coordinate={anim.coordinate}
+              color={markerColor}
             />
           );
         })}
@@ -394,7 +464,6 @@ export default function MapScreen() {
       <TouchableOpacity
         style={styles.refreshButton}
         onPress={async () => {
-          {/* Manual Refresh Current and All Friends Location! */}
           await forceReload();
           console.log('🔄 Manual refresh triggered');
         }}
@@ -404,12 +473,19 @@ export default function MapScreen() {
 
       <View style={styles.statusBar}>
         <Text style={styles.statusText}>
-          {friendsArray.length} friend{friendsArray.length > 1 ? 's' : ''} online
+          {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
-        {friendsArray.length > 0 && (
+        {locationAccuracy === 'low' && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: width * 0.0045}} >
+            <FontAwesome6 name="magnifying-glass-location" size={width * 0.03} color="#f80606ff" />
+            <Text style={styles.statusSubtext}> Improving location...</Text>
+          </View>
+        )}
+        {locationAccuracy === 'medium' && friendsArray.length > 0 && (
           <Text style={styles.statusSubtext}>Real-time tracking active</Text>
         )}
       </View>
+
       <CustomModal
         visible={showModal}
         title={modalStats.title}
@@ -433,23 +509,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: width * 0.025,
     color: '#9420ceff',
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    marginTop: width * 0.05,
-    gap: width * 0.02,
-  },
-  progressDot: {
-    width: width * 0.025,
-    height: width * 0.025,
-    borderRadius: width * 0.0125,
-    backgroundColor: '#e0e0e0',
-  },
-  progressDotComplete: {
-    backgroundColor: '#9420ceff',
-  },
-  progressDotCurrent: {
-    backgroundColor: '#4CAF50',
+    fontSize: width * 0.025,
   },
   searchContainer: {
     position: 'absolute',
@@ -469,10 +529,7 @@ const styles = StyleSheet.create({
     borderRadius: width * 0.04,
     paddingHorizontal: width * 0.02,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: width * 0.02,
-    },
+    shadowOffset: { width: 0, height: width * 0.02 },
     shadowOpacity: 0.25,
     shadowRadius: width * 0.035,
     elevation: 5,
@@ -483,73 +540,39 @@ const styles = StyleSheet.create({
     marginLeft: width * 0.02,
     color: '#9420ceff'
   },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingHorizontal: width * 0.02,
-    paddingVertical: width * 0.015,
-    borderRadius: width * 0.05,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: width * 0.005,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: width * 0.0086,
-    elevation: 5,
-  },
-  liveDot: {
-    width: width * 0.018,  // was: 8
-    height: width * 0.018,  // was: 8
-    borderRadius: width * 0.009,  // was: 4
-    backgroundColor: '#4CAF50',
-    marginRight: width * 0.011,  // was: 5
-  },
-  liveText: {
-    color: '#4CAF50',
-    fontWeight: '600',
-    fontSize: width * 0.035,  // was: 14
-  },
   map: {
     flex: 1,
   },
   centerButton: {
     position: 'absolute',
-    right: width * 0.033,  // was: 15
-    bottom: width * 0.223,  // was: 100
-    width: width * 0.112,  // was: 50
-    height: width * 0.112,  // was: 50
-    borderRadius: width * 0.056,  // was: 25
+    right: width * 0.033,
+    bottom: width * 0.223,
+    width: width * 0.112,
+    height: width * 0.112,
+    borderRadius: width * 0.056,
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: width * 0.0045,  // was: 2
-    },
+    shadowOffset: { width: 0, height: width * 0.0045 },
     shadowOpacity: 0.25,
-    shadowRadius: width * 0.0086,  // was: 3.84
+    shadowRadius: width * 0.0086,
     elevation: 5,
   },
   refreshButton: {
     position: 'absolute',
-    right: width * 0.033,  // was: 15
-    bottom: width * 0.357,  // was: 160
-    width: width * 0.112,  // was: 50
-    height: width * 0.112,  // was: 50
-    borderRadius: width * 0.056,  // was: 25
+    right: width * 0.033,
+    bottom: width * 0.357,
+    width: width * 0.112,
+    height: width * 0.112,
+    borderRadius: width * 0.056,
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: width * 0.0045,  // was: 2
-    },
+    shadowOffset: { width: 0, height: width * 0.0045 },
     shadowOpacity: 0.25,
-    shadowRadius: width * 0.0086,  // was: 3.84
+    shadowRadius: width * 0.0086,
     elevation: 5,
   },
   statusBar: {
@@ -557,18 +580,17 @@ const styles = StyleSheet.create({
     bottom: width * 0.02,
     right: width * 0.01,
     backgroundColor: 'rgba(117, 9, 167, 1)',
-    paddingHorizontal: width * 0.033,  // was: 15
-    paddingVertical: width * 0.018,  // was: 8
-    borderRadius: width * 0.045,  // was: 20
+    paddingHorizontal: width * 0.033,
+    paddingVertical: width * 0.018,
+    borderRadius: width * 0.045,
   },
   statusText: {
     color: 'white',
-    fontSize: width * 0.031,  // was: 14
+    fontSize: width * 0.031,
   },
   statusSubtext: {
-    color: '#90EE90',
-    fontSize: width * 0.022,  // was: 10
-    marginTop: width * 0.0045,  // was: 2
+    color: '#f80606ff',
+    fontSize: width * 0.022,
   },
   userMarker: {
     width: width * 0.07,
@@ -585,19 +607,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#b133f0ff',
   },
   friendMarker: {
-    width: width * 0.08,  // Match image size
+    width: width * 0.08,
     height: width * 0.08,
     borderRadius: width * 0.04,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: width * 0.0045,
     borderColor: 'white',
-    overflow: 'hidden',  // Add this for image clipping
+    overflow: 'hidden',
   },
-
   friendMarkerText: {
     color: 'white',
-    fontSize: width * 0.027,  // was: 12
+    fontSize: width * 0.027,
     fontWeight: 'bold',
   },
 });

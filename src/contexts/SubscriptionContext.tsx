@@ -1,5 +1,11 @@
-// src/contexts/SubscriptionContext.tsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
+// src/contexts/SubscriptionContext.tsx - OPTIMIZED VERSION
+// Key changes:
+// 1. Parallel data loading instead of sequential
+// 2. Batch avatar fetching
+// 3. Defer non-critical data loading
+// 4. Add loading states for better UX
+
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { WebSocketService } from '../services/websocketService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
@@ -8,7 +14,6 @@ import type { Schema } from '../../amplify/data/resource';
 
 type User = Schema['User']['type'];
 type FriendRequest = Schema['FriendRequest']['type'];
-// type Friend = Schema['Friend']['type'];
 type UserWithAvatar = User & { avatarUrl?: string };
 
 interface SubscriptionContextType {
@@ -18,7 +23,8 @@ interface SubscriptionContextType {
   friendsOnline: number;
   friendsMap: Map<string, UserWithAvatar>;
   forceReload: () => Promise<void>;
-  isWebSocketConnected: boolean// Add websocket port access
+  isWebSocketConnected: boolean;
+  isInitialLoading: boolean; // NEW: Track initial load state
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType>({
@@ -29,6 +35,7 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
   friendsMap: new Map(),
   forceReload: async () => {},
   isWebSocketConnected: false,
+  isInitialLoading: true,
 });
 
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -38,169 +45,176 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [friendsMap, setFriendsMap] = useState<Map<string, UserWithAvatar>>(new Map());
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // We need to get the profile picture URL from avatarKey from friends that have one and add it to the User object
-  const fetchProfilePictures = async (users: User[]): Promise<User[]> => {
-    const validFriends = users.filter((f): f is User => f !== null && f !== undefined);
+  // Track if initial load has completed
+  const initialLoadComplete = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
 
-    return Promise.all(validFriends.map(async (user) => {
-      if (user.avatarKey) { // If avatarKey exists, fetch the URL
-        try {
-          const result = await getUrl({
-            path: user.avatarKey,
-          })
-          const avatarUrl = result.url.toString();
-          return { ...user, avatarUrl: avatarUrl }; // Add avatarUrl to user object
-        } catch (error) {
-          console.error(`Error fetching profile picture for user ${user.id}:`, error);
-          return user; // Return user without avatarUrl on error
-        }
+  // OPTIMIZED: Batch fetch profile pictures with Promise.allSettled (don't fail on single error)
+  const fetchProfilePicturesBatch = useCallback(async (users: User[]): Promise<UserWithAvatar[]> => {
+    const validUsers = users.filter((f): f is User => f !== null && f !== undefined);
+
+    // Fetch all avatar URLs in parallel
+    const avatarPromises = validUsers.map(async (user): Promise<UserWithAvatar> => {
+      if (!user.avatarKey) return user;
+
+      try {
+        const result = await getUrl({ path: user.avatarKey });
+        return { ...user, avatarUrl: result.url.toString() };
+      } catch {
+        // Silently fail for individual avatars - don't block
+        return user;
       }
-      return user;
-    }));
-  };
-
-  const updateFriendsState = (newFriends: User[]) => {
-    const validFriends = newFriends.filter((f): f is User => f !== null && f !== undefined);
-
-    const newMap = new Map<string, User>();
-
-    validFriends.forEach(f => {
-      newMap.set(f.id, f);
-      console.log(`  📍 Added to map: ${f.username} (${f.id})`);
     });
 
-    // ✅ ADD: Log what's being removed from the map
-    const oldIds = Array.from(friendsMap.keys());
-    const newIds = Array.from(newMap.keys());
-    const removedIds = oldIds.filter(id => !newIds.includes(id));
+    // Use allSettled to not fail if one avatar fetch fails
+    const results = await Promise.allSettled(avatarPromises);
 
-    if (removedIds.length > 0) {
-      console.log('  🗑️ Removed from map:', removedIds);
-    }
+    return results.map((result, index) =>
+      result.status === 'fulfilled' ? result.value : validUsers[index]
+    );
+  }, []);
 
+  const updateFriendsState = useCallback((newFriends: UserWithAvatar[]) => {
+    const validFriends = newFriends.filter((f): f is UserWithAvatar => f !== null && f !== undefined);
+
+    const newMap = new Map<string, UserWithAvatar>();
+    validFriends.forEach(f => newMap.set(f.id, f));
 
     const online = validFriends.filter(f => f.isLocationSharing === true).length;
 
     console.log('📊 Context state updated:', {
       total: validFriends.length,
       online: online,
-      mapSize: newMap.size,
-      friendIds: validFriends.map(f => `${f.username} (${f.id})`),
     });
 
     setFriends(validFriends);
     setFriendsMap(newMap);
     setFriendsOnline(online);
-  };
+  }, []);
 
-  const forceReload = async () => {
-    console.log('🔄 Force reloading all data...');
+  // OPTIMIZED: Load all data in parallel, show friends immediately, load avatars async
+  const loadAllData = useCallback(async (userId: string, isInitial: boolean = false) => {
+    console.log('🔄 Loading all data...', isInitial ? '(initial)' : '(refresh)');
+    const startTime = Date.now();
+
     try {
-      const user = await authService.getCurrentUser();
-      if (!user) {
-        console.log('⚠️ No user for force reload');
-        return;
-      }
+      // STEP 1: Fetch friendships and requests IN PARALLEL
+      const [friendships, requests] = await Promise.all([
+        dataService.listFriends({
+          or: [
+            { userId: { eq: userId } },
+            { friendId: { eq: userId } },
+          ],
+        }),
+        dataService.listFriendRequests({
+          or: [
+            { receiverId: { eq: userId } },
+            { senderId: { eq: userId } },
+          ],
+        }),
+      ]);
 
-      // Load current friends
-      const friendships = await dataService.listFriends({
-        or: [
-          { userId: { eq: user.userId } },
-          { friendId: { eq: user.userId } },
-        ],
-      });
+      console.log(`📥 Step 1 complete (${Date.now() - startTime}ms): ${friendships.length} friendships, ${requests.length} requests`);
 
-      console.log('📥 Force reload - friendships found:', friendships.length);
-
-      const friendIds = friendships.map(f =>
-        f.userId === user.userId ? f.friendId : f.userId
-      );
-
-      console.log('📥 Force reload - friend IDs:', friendIds);
-
-      const friendsData = await Promise.all(
-        friendIds.map(id => dataService.getUser(id))
-      );
-
-      // Fetch profile pictures for friends
-      const friendsWithAvatars = await fetchProfilePictures(friendsData);
-      updateFriendsState(friendsWithAvatars);
-
-      // Load friend requests
-      const requests = await dataService.listFriendRequests({
-        or: [
-          { receiverId: { eq: user.userId } },
-          { senderId: { eq: user.userId } },
-        ],
-      })
-
-      const received = requests.filter( r => r.receiverId === user.userId && r.status === 'PENDING');
-      const sent = requests.filter( r => r.senderId === user.userId && r.status === 'PENDING');
-
+      // STEP 2: Process requests immediately (no network calls)
+      const received = requests.filter(r => r.receiverId === userId && r.status === 'PENDING');
+      const sent = requests.filter(r => r.senderId === userId && r.status === 'PENDING');
       setPendingRequests(received);
       setSentRequests(sent);
 
-      console.log('✅ Force reload complete');
+      // STEP 3: Get friend IDs
+      const friendIds = friendships.map(f => f.userId === userId ? f.friendId : f.userId);
+
+      if (friendIds.length === 0) {
+        updateFriendsState([]);
+        return;
+      }
+
+      // STEP 4: Fetch ALL friend data in parallel (not sequential!)
+      const friendsDataPromises = friendIds.map(id => dataService.getUser(id));
+      const friendsData = await Promise.all(friendsDataPromises);
+
+      const validFriends = friendsData.filter(f => f !== null && f !== undefined) as User[];
+
+      console.log(`📥 Step 4 complete (${Date.now() - startTime}ms): ${validFriends.length} friends loaded`);
+
+      // STEP 5: Show friends IMMEDIATELY without avatars
+      updateFriendsState(validFriends);
+
+      // STEP 6: Fetch avatars in background (don't block!)
+      // This allows the map to render while avatars load
+      fetchProfilePicturesBatch(validFriends).then(friendsWithAvatars => {
+        updateFriendsState(friendsWithAvatars);
+        console.log(`📥 Avatars loaded (${Date.now() - startTime}ms)`);
+      });
+
+      console.log(`✅ Core data load complete (${Date.now() - startTime}ms)`);
+
     } catch (error) {
-      console.error('❌ Force reload error:', error);
+      console.error('❌ Load data error:', error);
     }
-  };
+  }, [fetchProfilePicturesBatch, updateFriendsState]);
+
+  const forceReload = useCallback(async () => {
+    if (!currentUserIdRef.current) {
+      const user = await authService.getCurrentUser();
+      if (!user) return;
+      currentUserIdRef.current = user.userId;
+    }
+    await loadAllData(currentUserIdRef.current, false);
+  }, [loadAllData]);
 
   useEffect(() => {
-    console.log('🔵 SubscriptionContext - Initializing with WebSocket...');
+    console.log('🔵 SubscriptionContext - Initializing...');
     let wsService: WebSocketService | null = null;
-    let currentUserId: string | null = null;
+    let mounted = true;
 
-    const setupWebSocket = async () => {
+    const initialize = async () => {
       try {
+        // Get user first
         const user = await authService.getCurrentUser();
-        if (!user) {
-          console.log('⚠️ No user found');
+        if (!user || !mounted) {
+          setIsInitialLoading(false);
           return;
         }
 
         console.log('✅ User found:', user.userId);
-        currentUserId = user.userId;
+        currentUserIdRef.current = user.userId;
 
-        // Connect to WebSocket
+        // OPTIMIZATION: Start loading data AND WebSocket connection in parallel
+        const dataLoadPromise = loadAllData(user.userId, true);
+
+        // Setup WebSocket (don't await - let it connect while data loads)
         wsService = WebSocketService.getInstance();
 
-        // Set up event listeners and reconnect
+        // Set up event listeners
         wsService.on('connected', async () => {
           console.log('✅ WebSocket connected event');
-          setIsWebSocketConnected(true);
+          if (mounted) setIsWebSocketConnected(true);
 
-          // Re-sync all data after lost connection and re-connect
-          if (currentUserId) {
-            await forceReload();
+          // Only force reload on RECONNECT (not initial connect)
+          if (initialLoadComplete.current && currentUserIdRef.current) {
+            await loadAllData(currentUserIdRef.current, false);
           }
         });
 
         wsService.on('disconnected', () => {
-          console.log('🔴 WebSocket disconnected event');
-          setIsWebSocketConnected(false);
-        })
+          console.log('🔴 WebSocket disconnected');
+          if (mounted) setIsWebSocketConnected(false);
+        });
 
         wsService.on('userUpdate', (updatedUser: User) => {
           console.log('🔄 Real-time user update:', updatedUser.username);
-
           setFriends(prev => {
             const index = prev.findIndex(f => f.id === updatedUser.id);
             if (index !== -1) {
-              console.log(`  ✅ Updating friend in list:`, {
-                username: updatedUser.username,
-                sharing: updatedUser.isLocationSharing,
-                lat: updatedUser.latitude,
-                lng: updatedUser.longitude,
-              });
-
               const newFriends = [...prev];
-              newFriends[index] = updatedUser;
+              // Preserve existing avatarUrl if present
+              newFriends[index] = { ...updatedUser, avatarUrl: prev[index].avatarUrl };
               updateFriendsState(newFriends);
               return newFriends;
-            } else {
-              console.log(` ⚠️ User ${updatedUser.username} not in friends list`);
             }
             return prev;
           });
@@ -208,116 +222,72 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         wsService.on('friendAdded', async (data: any) => {
           console.log('👥 Friend added via WebSocket:', data);
+          const newFriendId = data.userId === currentUserIdRef.current ? data.friendId : data.userId;
 
-          // Determine which friend was added to current user
-          const newFriendId = data.userId === currentUserId ? data.friendId : data.userId;
-
-          // Fetch the new friend's data
           const newFriend = await dataService.getUser(newFriendId);
-
-          if (newFriend) {
-            console.log('✅ Adding friend to list:', newFriend.username);
+          if (newFriend && mounted) {
             setFriends(prev => {
-              // Check if already exists (shouldn't, but just in case)
-              if (prev.some(f => f.id === newFriend.id)) {
-                return prev;
-              }
+              if (prev.some(f => f.id === newFriend.id)) return prev;
               const newFriends = [...prev, newFriend];
               updateFriendsState(newFriends);
               return newFriends;
             });
+
+            // Also clear any pending requests between these users
+            setPendingRequests(prev => prev.filter(r =>
+              !(r.senderId === newFriendId || r.receiverId === newFriendId)
+            ));
+            setSentRequests(prev => prev.filter(r =>
+              !(r.senderId === newFriendId || r.receiverId === newFriendId)
+            ));
           }
-
-          // Also reload requests to clear any pending requests between these users
-          const requests = await dataService.listFriendRequests({
-            or: [
-              { receiverId: { eq: currentUserId } },
-              { senderId: { eq: currentUserId } },
-            ],
-          });
-
-          const received = requests.filter(r => r.receiverId === currentUserId && r.status === 'PENDING');
-          const sent = requests.filter(r => r.senderId === currentUserId && r.status === 'PENDING');
-
-          setPendingRequests(received);
-          setSentRequests(sent);
         });
 
-        wsService.on('friendRemoved', async(data: any) => {
-
+        wsService.on('friendRemoved', (data: any) => {
           console.log('💔 Friend removed via WebSocket:', data);
+          let friendToRemove: string | null = null;
 
-          // Determine which friend was removed
-          let friendToRemove: string;
-
-          if (data.userId === currentUserId) {
-            // Initiate removal, remove the friendId
+          if (data.userId === currentUserIdRef.current) {
             friendToRemove = data.friendId;
-          } else if (data.friendId === currentUserId) {
-            // Removed by someone else, remove your friend that removed you
+          } else if (data.friendId === currentUserIdRef.current) {
             friendToRemove = data.userId;
-          } else {
-            // This message isn't for me
-            console.log('⚠️ Received friend removal not involving current user');
-            return;
-
           }
 
-          console.log(`🗑️ Removing friend from list: ${friendToRemove}`);
-
-          setFriends(prev => {
-            const newFriends = prev.filter(f => f.id !== friendToRemove);
-            console.log(`  ✅ Removed. Friend count: ${prev.length} → ${newFriends.length}`);
-            updateFriendsState(newFriends);
-            return newFriends;
-          });
+          if (friendToRemove) {
+            setFriends(prev => {
+              const newFriends = prev.filter(f => f.id !== friendToRemove);
+              updateFriendsState(newFriends);
+              return newFriends;
+            });
+          }
         });
 
         wsService.on('friendRequestReceived', async (data: any) => {
-          console.log('📬 Friend request received via WebSocket:', data);
-
-          const receivedRequests = await dataService.listFriendRequests({
-            receiverId: { eq: currentUserId },
+          console.log('📬 Friend request received:', data);
+          const requests = await dataService.listFriendRequests({
+            receiverId: { eq: currentUserIdRef.current },
             status: { eq: 'PENDING' }
           });
-
-          console.log(`  ✅ Updated pending requests: ${receivedRequests.length}`);
-          setPendingRequests(receivedRequests);
+          if (mounted) setPendingRequests(requests);
         });
 
         wsService.on('friendRequestSent', async (data: any) => {
-          console.log('📤 Friend request sent via WebSocket:', data);
-
-          // Reload sent requests to include the new one
-          const sentRequests = await dataService.listFriendRequests({
-            senderId: { eq: currentUserId },
+          console.log('📤 Friend request sent:', data);
+          const requests = await dataService.listFriendRequests({
+            senderId: { eq: currentUserIdRef.current },
             status: { eq: 'PENDING' }
           });
-
-          console.log(`  ✅ Updated sent requests: ${sentRequests.length}`);
-          setSentRequests(sentRequests);
-        })
+          if (mounted) setSentRequests(requests);
+        });
 
         wsService.on('friendRequestAccepted', async (data: any) => {
-          console.log('✅ Friend request accepted via WebSocket:', data);
+          console.log('✅ Friend request accepted:', data);
+          setSentRequests(prev => prev.filter(r => r.id !== data.requestId));
 
-          // Remove from sent requests
-          setSentRequests(prev => {
-            const newSent = prev.filter(r => r.id !== data.requestId);
-            console.log(`  ✅ Removed from sent. Count: ${prev.length} → ${newSent.length}`);
-            return newSent;
-          });
-
-          // The SENDER (current user) needs to add the RECEIVER as friend
           const newFriend = await dataService.getUser(data.receiverId);
-
-
-          if (newFriend) {
-            console.log('✅ Adding newly accepted friend to list:', newFriend.username);
+          if (newFriend && mounted) {
             setFriends(prev => {
-              if (prev.some(f => f.id === newFriend.id)) {
-                return prev;
-              }
+              if (prev.some(f => f.id === newFriend.id)) return prev;
               const newFriends = [...prev, newFriend];
               updateFriendsState(newFriends);
               return newFriends;
@@ -325,69 +295,44 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
         });
 
-        // Friend Request Deleted - Direct State Update
-        wsService.on('friendRequestDeleted', async (data: any) => {
-          console.log('🗑️ Friend request deleted via WebSocket:', data);
-
-          // Remove request from both user sent and user received
-          setPendingRequests(prev => {
-            const newPending = prev.filter(r => r.id !== data.requestId);
-            console.log(`  ✅ Removed from pending. Count: ${prev.length} → ${newPending.length}`);
-            return newPending;
-          });
-
-          setSentRequests(prev => {
-            const newSent = prev.filter(r => r.id !== data.requestId);
-            console.log(`  ✅ Removed from sent. Count: ${prev.length} → ${newSent.length}`);
-            return newSent;
-          });
+        wsService.on('friendRequestDeleted', (data: any) => {
+          console.log('🗑️ Friend request deleted:', data);
+          setPendingRequests(prev => prev.filter(r => r.id !== data.requestId));
+          setSentRequests(prev => prev.filter(r => r.id !== data.requestId));
         });
 
         wsService.on('error', (error: any) => {
           console.error('❌ WebSocket error:', error);
         });
 
-        wsService.on('maxReconnectAttemptsReached', () => {
-          console.error('❌ Max WebSocket reconnection attempts reached');
-          // You could show a UI notification here
-        });
+        // Start WebSocket connection (don't await)
+        wsService.connect(user.userId);
 
-        // Connect
-        await wsService.connect(user.userId);
+        // Wait for initial data load to complete
+        await dataLoadPromise;
 
-        console.log('✅ WebSocket setup complete');
+        if (mounted) {
+          setIsInitialLoading(false);
+          initialLoadComplete.current = true;
+        }
+
+        console.log('✅ Initialization complete');
 
       } catch (error) {
-        console.error('❌ Error setting up WebSocket:', error);
-
+        console.error('❌ Initialization error:', error);
+        if (mounted) setIsInitialLoading(false);
       }
     };
 
-    setupWebSocket();
+    initialize();
 
     return () => {
-      console.log('🔴 Cleaning up WebSocket for user:', currentUserId);
+      mounted = false;
       if (wsService) {
         wsService.disconnect();
       }
     };
-  }, []);
-
-  // ✅ ADD: Debug helper (optional, remove in production)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('📊 STATE SNAPSHOT:', {
-        friends: friends.length,
-        mapSize: friendsMap.size,
-        online: friendsOnline,
-        pending: pendingRequests.length,
-        sent: sentRequests.length,
-        connected: isWebSocketConnected,
-      });
-    }, 30000); // Every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [friends, friendsMap, friendsOnline, pendingRequests, sentRequests, isWebSocketConnected]);
+  }, [loadAllData, updateFriendsState]);
 
   return (
     <SubscriptionContext.Provider value={{
@@ -398,6 +343,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       friendsMap,
       forceReload,
       isWebSocketConnected,
+      isInitialLoading,
     }}>
       {children}
     </SubscriptionContext.Provider>
