@@ -1,20 +1,25 @@
 // app/_layout.tsx
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StatusBar, useColorScheme } from 'react-native';
 import { Amplify } from 'aws-amplify';
 import amplifyOutputs from '../amplify_outputs.json';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
-import { SubscriptionProvider } from '../src/contexts/SubscriptionContext';
 
 Amplify.configure(amplifyOutputs);
 
 function RootNavigator() {
   const { isAuthenticated, loading } = useAuth();
+  const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+
+  const STATUS_BG = colorScheme === 'dark' ? '#121212' : '#ffffff';
+
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: STATUS_BG }}>
+        <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
         <ActivityIndicator size="large" color="#4CAF50" />
       </View>
     );
@@ -22,6 +27,20 @@ function RootNavigator() {
 
   return (
     <SafeAreaProvider>
+      {/* PAINT THE AREA BEHIND THE PUNCH HOLE */}
+      <View
+        style={{
+          height: insets.top,
+          backgroundColor: STATUS_BG,
+        }}
+      />
+
+      <StatusBar
+        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+        translucent
+        backgroundColor="transparent"
+      />
+
       <Stack
         screenOptions={{
           headerShown: false,

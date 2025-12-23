@@ -2,6 +2,9 @@
 import 'dotenv/config';
 
 export default {
+  cli: {
+    appVersionSource: "remote"
+  },
   expo: {
     name: "LocationLink",
     slug: "LocationLink",
