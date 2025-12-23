@@ -17,7 +17,6 @@ import {
   TouchableOpacity,
   Dimensions,
   useColorScheme,
-  Easing,
   Image,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
@@ -460,6 +459,7 @@ export default function MapScreen() {
         longitudeDelta: 0.01,
       };
       setRegion(newRegion);
+
       mapRef.current?.animateToRegion(newRegion, 1000);
     } else {
       setModalStats({

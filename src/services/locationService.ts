@@ -11,6 +11,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dataService } from './dataService';
+import { AppState } from 'react-native';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
@@ -33,8 +34,16 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   const location = locations[0];
   if (!location) return;
 
+  if (appState === 'active') {
+    return;
+  }
+
+
   const userId = await AsyncStorage.getItem('currentUserId');
-  if (!userId) return;
+  if (!userId) {
+    console.warn('⚠️ Background task: missing userId');
+    return;
+  }
 
   try {
     const lastUpdateStr = await AsyncStorage.getItem('bgLastDbUpdate');
@@ -71,6 +80,12 @@ export interface LocationUpdate {
   longitude: number;
   accuracy: number | null;
 }
+
+let appState = AppState.currentState;
+
+AppState.addEventListener('change', nextState => {
+  appState = nextState;
+})
 
 export class LocationService {
   private static instance: LocationService;
@@ -206,7 +221,9 @@ export class LocationService {
 
     // Start background tracking after a delay
     setTimeout(() => {
-      this.startBackgroundTracking();
+      if (this.isTracking) {
+        this.startBackgroundTracking();
+      }
     }, BG_START_DELAY);
   }
 
@@ -236,6 +253,7 @@ export class LocationService {
     // Check if we should upgrade to Balanced accuracy
     if (!this.hasUpgradedToBalanced &&
         coords.accuracy != null &&
+        coords.accuracy > 0 &&
         coords.accuracy < ACCURACY_THRESHOLD) {
       console.log(`🎯 Good GPS fix (${coords.accuracy.toFixed(1)}m) - upgrading to BALANCED`);
       await this.upgradeToBalanced();
@@ -244,6 +262,12 @@ export class LocationService {
 
   // Upgrade to Balanced accuracy
   private async upgradeToBalanced(): Promise<void> {
+    const perms = await Location.getForegroundPermissionsAsync();
+    if (!perms.granted) {
+      console.log('⚠️ Cannot upgrade accuracy — permission revoked');
+      return;
+    }
+
     this.hasUpgradedToBalanced = true;
 
     if (this.locationSubscription) {
