@@ -358,14 +358,36 @@ export default function MapScreen() {
       }
       console.log(`✅ Permissions granted (${Date.now() - startTime}ms)`);
 
-      // STEP 4: Get initial location FAST
+      // STEP 4: Get initial location with multiple fallback strategies
       setLoadingStep('location');
-      const initialLocation = await locationService.getFastLocation();
+      let initialLocation = await locationService.getFastLocation();
 
+      // If getFastLocation fails, try getting current position directly
+      if (!initialLocation) {
+        console.log('⚠️ Fast location failed, trying direct getCurrentPosition...');
+        try {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+
+          if (location) {
+            initialLocation = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              accuracy: location.coords.accuracy,
+            };
+            console.log('✅ Got location from getCurrentPosition');
+          }
+        } catch (err) {
+          console.error('❌ getCurrentPosition also failed:', err);
+        }
+      }
+
+      // If we got a location, use it
       if (initialLocation) {
         console.log(`✅ Got initial location in ${Date.now() - startTime}ms`);
 
-        // ✅ FIX: Set animated coordinate (no animation for first position)
+        // ✅ Set animated coordinate (no animation for first position)
         userAnimatedCoordinate.setValue({
           latitude: initialLocation.latitude,
           longitude: initialLocation.longitude,
@@ -388,6 +410,9 @@ export default function MapScreen() {
         if (initialLocation.accuracy != null && initialLocation.accuracy < GOOD_ACCURACY_THRESHOLD) {
           setLocationAccuracy('high');
         }
+      } else {
+        console.log('⚠️ Could not get initial location, showing default region');
+        // Show map anyway, tracking will update location when available
       }
 
       // STEP 5: Show map
@@ -410,6 +435,7 @@ export default function MapScreen() {
       setLoading(false);
     }
   };
+
 
   // ============================================
   // TRACKING (with animated user marker)

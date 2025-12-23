@@ -30,7 +30,7 @@ export default {
       }
     },
     android: {
-      package: "com.yourcompany.locationlink",
+      package: "com.theenclave.locationlink",
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID
