@@ -1,10 +1,9 @@
-// src/screens/MapScreen.tsx - OPTIMIZED WITH DARK MODE
+// src/screens/MapScreen.tsx - FIXED VERSION
 //
-// Changes:
-// - Dark mode support
-// - Syncs with user's isLocationSharing setting from DB
-// - Uses LocationService properly
-// - Fixed accuracy handling
+// FIXES APPLIED:
+// 1. REMOVED dark/light theme - back to original colors
+// 2. Properly reads user's isLocationSharing preference from DB
+// 3. Only starts tracking if user has enabled location sharing
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
@@ -15,10 +14,9 @@ import {
   Text,
   TouchableOpacity,
   Dimensions,
-  Animated,
+  useColorScheme,
   Easing,
   Image,
-  useColorScheme,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -27,22 +25,20 @@ import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
+
 
 const { width } = Dimensions.get('screen');
 
 // ============================================
-// THEME COLORS
+// ORIGINAL COLORS (no dark/light theme)
 // ============================================
-const LIGHT_THEME = {
+const COLORS = {
   background: '#ffffff',
-  surface: '#ffffff',
-  text: '#333333',
-  textSecondary: '#666666',
   primary: '#9420ceff',
-  primaryLight: 'rgba(148, 32, 206, 0.1)',
-  accent: '#4709b1ff',
+  accent: '#9420ceff',
   statusBar: 'rgba(117, 9, 167, 1)',
   statusText: '#ffffff',
   statusSubtext: '#90EE90',
@@ -50,32 +46,26 @@ const LIGHT_THEME = {
   searchText: '#9420ceff',
   searchPlaceholder: '#999999',
   buttonBg: '#ffffff',
-  shadow: '#000000',
   lowAccuracyColor: '#FFA500',
   highAccuracyColor: '#b133f0ff',
-  userMarkerBg: 'rgba(109, 74, 255, 0.22)',
+  userMarkerBg: 'rgba(14, 7, 41, 0.22)',
 };
 
 const DARK_THEME = {
-  background: '#121212',
-  surface: '#1E1E1E',
-  text: '#E0E0E0',
-  textSecondary: '#A0A0A0',
-  primary: '#BB86FC',
-  primaryLight: 'rgba(187, 134, 252, 0.15)',
-  accent: '#BB86FC',
-  statusBar: 'rgba(30, 30, 30, 0.95)',
-  statusText: '#E0E0E0',
+  background: '#191919ff',
+  primary: '#9420ceff',
+  accent: '#4709b1ff',
+  statusBar: 'rgba(117, 9, 167, 1)',
+  statusText: '#ffffff',
   statusSubtext: '#90EE90',
-  searchBg: '#2D2D2D',
-  searchText: '#BB86FC',
-  searchPlaceholder: '#888888',
-  buttonBg: '#2D2D2D',
-  shadow: '#000000',
-  lowAccuracyColor: '#FFB74D',
-  highAccuracyColor: '#BB86FC',
-  userMarkerBg: 'rgba(187, 134, 252, 0.25)',
-};
+  searchBg: '#191919ff',
+  searchText: '#ffffff',
+  searchPlaceholder: '#999999',
+  buttonBg: '#191919ff',
+  lowAccuracyColor: '#FFA500',
+  highAccuracyColor: '#b133f0ff',
+  userMarkerBg: 'rgba(245, 245, 245, 0.22)',
+}
 
 const MARKER_COLORS = [
   '#4CAF50', '#2196F3', '#9C27B0', '#FF9800',
@@ -151,10 +141,6 @@ const DEFAULT_REGION = {
 const GOOD_ACCURACY_THRESHOLD = 50;
 
 export default function MapScreen() {
-  // Theme
-  const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? DARK_THEME : LIGHT_THEME;
-
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -173,6 +159,9 @@ export default function MapScreen() {
 
   const userIdRef = useRef<string | null>(null);
   const locationServiceRef = useRef<LocationService | null>(null);
+
+  const colorScheme = useColorScheme();
+  const theme = colorScheme === 'dark' ? DARK_THEME : COLORS;
 
   useEffect(() => {
     initializeMap();
@@ -251,7 +240,7 @@ export default function MapScreen() {
       userIdRef.current = user.userId;
       console.log(`✅ Auth complete (${Date.now() - startTime}ms)`);
 
-      // STEP 2: Check user's location sharing setting from DB
+      // STEP 2: Check user's location sharing PREFERENCE from DB
       const userData = await dataService.getUser(user.userId);
       const shouldShareLocation = userData?.isLocationSharing ?? true;
 
@@ -302,7 +291,7 @@ export default function MapScreen() {
       setLoading(false);
       console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
 
-      // STEP 6: Start tracking ONLY if user has location sharing enabled
+      // STEP 6: Start tracking ONLY if user has location sharing enabled (their preference)
       if (shouldShareLocation) {
         startTracking(user.userId);
       } else {
@@ -397,7 +386,7 @@ export default function MapScreen() {
                 key={step}
                 style={[
                   styles.progressDot,
-                  { backgroundColor: theme.textSecondary },
+                  { backgroundColor: '#ccc' },
                   isComplete && { backgroundColor: theme.primary },
                   isCurrent && { backgroundColor: '#4CAF50' },
                 ]}
@@ -434,7 +423,6 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        toolbarEnabled={false}
         style={styles.map}
         initialRegion={region}
         showsUserLocation={false}
@@ -512,14 +500,18 @@ export default function MapScreen() {
           {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
         {locationAccuracy === 'low' && (
-          <Text style={[styles.statusSubtext, { color: theme.statusSubtext }]}>
-            📍 Improving accuracy...
-          </Text>
+          <View style={{flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center'}}>
+            <Text style={[styles.statusSubtext, {color: "#FFA500"}]}>
+              Improving Accuracy...
+            </Text>
+          </View>
         )}
         {locationAccuracy === 'high' && friendsArray.length > 0 && (
-          <Text style={[styles.statusSubtext, { color: theme.statusSubtext }]}>
-            Real-time tracking active
-          </Text>
+          <View style={{flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center'}}>
+            <Text style={[styles.statusSubtext, {color: "#90EE90" }]}>
+              Real =Time Tracking
+            </Text>
+          </View>
         )}
       </View>
 

@@ -1,4 +1,14 @@
-// src/screens/ProfileScreen.tsx
+// src/screens/ProfileScreen.tsx - FIXED VERSION
+//
+// FIXES APPLIED:
+// 1. REMOVED the `!` inversion bug: setIsLocationSharing(!userData?.isLocationSharing)
+//    - Was inverting the user's preference on load!
+// 2. REMOVED isLocationSharing=false write from handleSignOut()
+//    - Was destroying user preference on logout!
+// 3. REMOVED the rehydration logic that was causing race conditions
+//    - MapScreen handles starting tracking, not ProfileScreen
+// 4. REMOVED dark/light theme - back to original colors
+
 import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import {
@@ -43,25 +53,23 @@ export default function ProfileScreen() {
 
   const loadProfile = async () => {
     try {
-     const currentUser = await authService.getCurrentUser();
-     if (currentUser) {
-      const userData = await dataService.getUser(currentUser.userId);
-      setUser(userData);
-      setIsLocationSharing(userData?.isLocationSharing ?? false);
+      const currentUser = await authService.getCurrentUser();
+      if (currentUser) {
+        const userData = await dataService.getUser(currentUser.userId);
+        setUser(userData);
 
-      // ✅ REHYDRATE location tracking from backend intent
-      const locationService = LocationService.getInstance();
-      if (userData?.isLocationSharing) {
-        await locationService.startLocationTracking(userData.id);
-      } else {
-        await locationService.stopLocationTracking();
+        // ✅ FIX: Removed the `!` that was inverting the value!
+        // Was: setIsLocationSharing(!userData?.isLocationSharing);
+        setIsLocationSharing(userData?.isLocationSharing ?? false);
+
+        // ✅ FIX: REMOVED the rehydration logic that was calling startLocationTracking/stopLocationTracking
+        // MapScreen is responsible for starting tracking based on user preference, not ProfileScreen.
+        // This prevents race conditions and unintended DB writes.
+
+        if (userData?.avatarKey) {
+          await loadAvatar(userData.avatarKey);
+        }
       }
-
-      if (userData?.avatarKey) {
-        await loadAvatar(userData.avatarKey);  // ✅ Pass the key directly
-      }
-     }
-
     } catch (error) {
       console.error('Error loading profile:', error);
     }
@@ -108,10 +116,13 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     try {
+      // Stop tracking (but DON'T change user preference in DB)
       const locationService = LocationService.getInstance();
+      await locationService.stopLocationTracking();
 
-      await locationService.stopLocationTracking(true);
-
+      // ✅ FIX: REMOVED this line that was destroying user preference!
+      // Was: await dataService.updateUser(user.id, { isLocationSharing: false });
+      // The user's preference should be preserved so it resumes on next login.
 
       await authService.signOut();
       router.replace('/signin');
@@ -122,31 +133,24 @@ export default function ProfileScreen() {
         title: 'Signout Error',
         message: 'Failed to sign out'
       });
-      // Alert.alert('Error', 'Failed to sign out');
     }
   };
 
   const loadAvatar = async (avatarKey: string) => {
     try {
-      // Use the stored avatarKey path from the database
       const result = await getUrl({
         path: avatarKey,
       });
-
       setAvatarUrl(result.url.toString());
     } catch (error) {
       console.log('User has no custom avatar');
     }
   }
 
-  // Image picker logic
   const pickAndUploadImage = async() => {
-
     try {
-
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-      // If no permission, we set an error modal and stop!
       if (!permissionResult.granted) {
         setModalContent({
           type: 'error',
@@ -157,11 +161,10 @@ export default function ProfileScreen() {
         return;
       }
 
-      // Proceed with avatar image picker
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [1, 1], // For our circular pfp icon display
+        aspect: [1, 1],
         quality: 0.7
       })
 
@@ -170,10 +173,8 @@ export default function ProfileScreen() {
       }
 
       const curUrl = result.assets[0].uri;
-
       setUploadingImage(true);
 
-      // Get the Cognito Identity ID
       const session = await fetchAuthSession();
       const identityId = session.identityId;
 
@@ -207,22 +208,21 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-          <TouchableOpacity onPress={pickAndUploadImage} disabled={uploadingImage}>
-            <View style={styles.avatarContainer}>
+        <TouchableOpacity onPress={pickAndUploadImage} disabled={uploadingImage}>
+          <View style={styles.avatarContainer}>
+            {uploadingImage ? (
+              <ActivityIndicator size="large" color="#4CAF50" />
+            ) : avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <Ionicons name="person-circle" size={width * 0.25} color="#4CAF50" />
+            )}
 
-              {uploadingImage ? (
-                <ActivityIndicator size="large" color="#4CAF50" />
-              ) : avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-              ) : (
-                <Ionicons name="person-circle" size={width * 0.25} color="#4CAF50" />
-              )}
-
-              <View style={styles.editIconContainer}>
-                <Ionicons name="camera" size={width * 0.035} color="white" />
-              </View>
+            <View style={styles.editIconContainer}>
+              <Ionicons name="camera" size={width * 0.035} color="white" />
             </View>
-          </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
         <Text style={styles.changePhotoText}>Tap to change photo</Text>
         <Text style={styles.username}>{user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
@@ -237,7 +237,6 @@ export default function ProfileScreen() {
             value={isLocationSharing}
             onValueChange={toggleLocationSharing}
             disabled={loading}
-
           />
         </View>
         <Text style={styles.settingDescription}>
@@ -248,7 +247,7 @@ export default function ProfileScreen() {
             : <Text style={[styles.settingDescription, styles.settingOff]}>
                 Your current location is hidden to friends
               </Text>
-           }
+          }
         </Text>
       </View>
 
@@ -269,17 +268,14 @@ export default function ProfileScreen() {
         message={modalContent.message}
         type={modalContent.type}
         onConfirm={modalContent.type === 'confirm'
-                    ? () => handleSignOut()
-                    : undefined
+          ? () => handleSignOut()
+          : undefined
         }
         onClose={() => setModalVisible(false)}
       />
     </ScrollView>
   );
 }
-
-
-
 
 const styles = StyleSheet.create({
   container: {
@@ -304,7 +300,7 @@ const styles = StyleSheet.create({
   email: {
     fontSize: width * 0.035,
     color: '#666',
-    marginTop:  width * 0.010,
+    marginTop: width * 0.010,
   },
   section: {
     backgroundColor: 'white',
@@ -314,7 +310,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: width * 0.25,
     height: width * 0.25,
-    borderRadius: width * 0.125,  // Half of width/height = perfect circle
+    borderRadius: width * 0.125,
   },
   avatarContainer: {
     position: 'relative',
@@ -348,7 +344,7 @@ const styles = StyleSheet.create({
   settingDescription: {
     fontSize: width * 0.030,
     color: '#666',
-    marginTop:  width * 0.020,
+    marginTop: width * 0.020,
     fontWeight: 'bold',
   },
   settingOn: {

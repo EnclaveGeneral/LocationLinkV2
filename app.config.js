@@ -9,8 +9,8 @@ export default {
     scheme: "locationLink",
     platforms: ["android", "ios"],
     orientation: "portrait",
-    icon: "./assets/starting_icon.png",
-    userInterfaceStyle: "light",
+    icon: "./assets/os_icon.png",
+    userInterfaceStyle: "automatic",
     splash: {
       image: "./assets/loading_icon.png",
       resizeMode: "contain",

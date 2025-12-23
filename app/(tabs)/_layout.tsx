@@ -4,8 +4,27 @@ import { Tabs, Redirect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { View, ActivityIndicator, StyleSheet, Text, Image, ImageSourcePropType, Dimensions} from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, Image, ImageSourcePropType, Dimensions, useColorScheme } from 'react-native';
 import { SubscriptionProvider, useSubscriptions } from '../../src/contexts/SubscriptionContext';
+
+// Theme definitions (these are fine at module level - they're just data)
+const LIGHT_THEME = {
+  tabActive: '#A910F5',
+  tabNonActive: '#666666ff',
+  headerText: '#ffffff',
+  background: '#f3f3f3ff',
+  badgeText: '#ffffff',
+};
+
+const DARK_THEME = {
+  tabActive: '#A910F5',
+  tabNonActive: '#ffffff',
+  headerText: '#ffffff',
+  background: '#1e1e1eff',
+  badgeText: '#ffffff',
+};
+
+const { height, width } = Dimensions.get('screen');
 
 // Create our custom TabIcons
 const TabIcon = ({
@@ -15,7 +34,7 @@ const TabIcon = ({
   focused,
   badgeCount,
   type
-} : {
+}: {
   source: ImageSourcePropType,
   color: string,
   size: number,
@@ -24,14 +43,14 @@ const TabIcon = ({
   type?: 'friends' | 'requests'
 }) => {
 
-  const getBadgeStyle = ()=> {
+  const getBadgeStyle = () => {
     switch (type) {
       case 'friends':
-        return { backgroundColor: '#A910F5'}
+        return { backgroundColor: '#A910F5' }
       case 'requests':
-        return { backgroundColor: '#32af16ff'}
+        return { backgroundColor: '#32af16ff' }
       default:
-        return { backgroundColor: '#666'}
+        return { backgroundColor: '#666666ff' }
     }
   }
 
@@ -60,10 +79,12 @@ const TabIcon = ({
   );
 };
 
-const { height, width } = Dimensions.get('screen');
-
 // Separate component that uses the subscription hook
 function TabsContent() {
+  // ✅ useColorScheme hook is now INSIDE the component
+  const colorScheme = useColorScheme();
+  const theme = colorScheme === 'dark' ? DARK_THEME : LIGHT_THEME;
+
   const { pendingRequests, friends } = useSubscriptions();
   const friendsOnline = friends.filter(f => f?.isLocationSharing).length;
 
@@ -75,15 +96,15 @@ function TabsContent() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#A910F5',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: theme.tabActive,
+        tabBarInactiveTintColor: theme.tabNonActive,
         tabBarStyle: {
           height: barHeight,
           paddingBottom: insets.bottom,
           paddingTop: 0,
           justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: '#fff',
+          backgroundColor: theme.background,
         },
         tabBarItemStyle: {
           flex: 1,
@@ -92,7 +113,6 @@ function TabsContent() {
         },
         tabBarLabelStyle: {
           fontSize: textSize,
-          margin: 0,
         },
         tabBarIconStyle: {
           justifyContent: 'center',
@@ -116,11 +136,11 @@ function TabsContent() {
                   style={styles.headerImg}
                   source={require('../../assets/task_bar_icon.png')}
                 />
-                <Text style={styles.headerText}>LocationLink</Text>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>LocationLink</Text>
               </View>
             </LinearGradient>
           ),
-          tabBarIcon: ({ color, size, focused}) => (
+          tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               source={
                 focused
@@ -147,16 +167,16 @@ function TabsContent() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                <Text style={styles.headerText}>My Friends</Text>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>My Friends</Text>
               </View>
             </LinearGradient>
           ),
-          tabBarIcon: ({color, size, focused}) => (
+          tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
-              source ={
-                  focused
-                    ? require('../../assets/friends_active_icon.png')
-                    : require('../../assets/friends_icon.png')
+              source={
+                focused
+                  ? require('../../assets/friends_active_icon.png')
+                  : require('../../assets/friends_icon.png')
               }
               color={color}
               size={iconSize || size}
@@ -179,16 +199,16 @@ function TabsContent() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                <Text style={styles.headerText}>My Requests</Text>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>My Requests</Text>
               </View>
             </LinearGradient>
           ),
-          tabBarIcon: ({color, size, focused}) => (
+          tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               source={
-                    focused
-                      ? require('../../assets/add_friend_active_icon.png')
-                      : require('../../assets/add_friend_icon.png')
+                focused
+                  ? require('../../assets/add_friend_active_icon.png')
+                  : require('../../assets/add_friend_icon.png')
               }
               color={color}
               size={iconSize || size}
@@ -211,16 +231,16 @@ function TabsContent() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                <Text style={styles.headerText}>My Profile</Text>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>My Profile</Text>
               </View>
             </LinearGradient>
           ),
-          tabBarIcon: ({color, size, focused}) => (
+          tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               source={
-                    focused
-                      ? require('../../assets/profile_active_icon.png')
-                      : require('../../assets/profile_icon.png')
+                focused
+                  ? require('../../assets/profile_active_icon.png')
+                  : require('../../assets/profile_icon.png')
               }
               color={color}
               size={iconSize || size}
@@ -271,6 +291,7 @@ export default function TabLayout() {
   );
 }
 
+// ✅ Styles without theme-dependent colors (those are applied inline)
 const styles = StyleSheet.create({
   baseIcon: {
     resizeMode: 'contain' as const,
@@ -293,7 +314,6 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   headerText: {
-    color: '#fff',
     marginVertical: width * 0.025,
     fontSize: width * 0.050,
     fontWeight: 'bold',
@@ -302,20 +322,20 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    right: -8,
-    top: -3,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    right: width * -0.025,
+    top: width * -0.005,
+    borderRadius: width * 0.02,
+    minWidth: width * 0.04,
+    height: width * 0.04,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
+    paddingHorizontal: width * 0.008,
+    borderWidth: width * 0.004,
     borderColor: 'white',
   },
   badgeText: {
-    color: 'white',
-    fontSize: 10,
+    color: '#ffffff',
+    fontSize: width * 0.02,
     fontWeight: 'bold',
   },
 });

@@ -1,8 +1,11 @@
 // src/services/locationService.ts - FIXED VERSION
 //
-// FIX: Now sets isLocationSharing=true in DB immediately when tracking starts
-// FIX: Proper Low → Balanced upgrade flow
-// FIX: Callback passes accuracy properly
+// FIXES APPLIED:
+// 1. REMOVED isLocationSharing=false write from stopLocationTracking()
+//    - This was destroying user preference on logout!
+// 2. Kept isLocationSharing=true write on startLocationTracking() and updateLocationInDB()
+//    - This ensures friends can see user when actively sharing
+// 3. Proper Low → Balanced upgrade flow for battery efficiency
 
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -177,7 +180,8 @@ export class LocationService {
 
     await AsyncStorage.setItem('currentUserId', userId);
 
-    // **FIX: Set isLocationSharing=true in DB IMMEDIATELY when tracking starts**
+    // Set isLocationSharing=true in DB when tracking starts
+    // This lets friends know we're actively sharing
     try {
       await dataService.updateUser(userId, {
         isLocationSharing: true,
@@ -298,8 +302,9 @@ export class LocationService {
     }
   }
 
-  // Stop tracking
-  async stopLocationTracking(updateDb: boolean = false): Promise<void> {
+  // Stop tracking - DOES NOT MODIFY USER PREFERENCE IN DB!
+  // The user's isLocationSharing preference is preserved so it resumes on next login
+  async stopLocationTracking(): Promise<void> {
     if (this.locationSubscription) {
       this.locationSubscription.remove();
       this.locationSubscription = null;
@@ -315,17 +320,9 @@ export class LocationService {
       console.error('Error stopping background tracking:', error);
     }
 
-    // **FIX: Set isLocationSharing=false in DB when stopping**
-    if (updateDb && this.userId) {
-      try {
-        await dataService.updateUser(this.userId, {
-          isLocationSharing: false,
-        });
-        console.log('✅ Set isLocationSharing=false in DB');
-      } catch (error) {
-        console.error('Failed to update isLocationSharing:', error);
-      }
-    }
+    // ✅ FIX: DO NOT write isLocationSharing=false to DB here!
+    // The user's preference should be preserved across sessions.
+    // We only stop the actual tracking, not change their preference.
 
     await AsyncStorage.removeItem('currentUserId');
     this.isTracking = false;
