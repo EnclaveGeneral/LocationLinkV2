@@ -1,9 +1,11 @@
-// src/screens/MapScreen.tsx - FIXED VERSION
+// src/screens/MapScreen.tsx - FULLY FIXED VERSION
 //
 // FIXES APPLIED:
-// 1. REMOVED dark/light theme - back to original colors
-// 2. Properly reads user's isLocationSharing preference from DB
-// 3. Only starts tracking if user has enabled location sharing
+// 1. ✅ User marker is now ANIMATED (no more snappy jumping)
+// 2. ✅ Stale friend entries cleaned up when friends are removed
+// 3. ✅ Proper cleanup of animated coordinates
+// 4. ✅ User preference respected for location sharing
+// 5. ✅ Dark/light theme support for map and tab bar
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
@@ -29,11 +31,10 @@ import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
-
 const { width } = Dimensions.get('screen');
 
 // ============================================
-// ORIGINAL COLORS (no dark/light theme)
+// THEME COLORS
 // ============================================
 const COLORS = {
   background: '#ffffff',
@@ -65,7 +66,7 @@ const DARK_THEME = {
   lowAccuracyColor: '#FFA500',
   highAccuracyColor: '#b133f0ff',
   userMarkerBg: 'rgba(245, 245, 245, 0.22)',
-}
+};
 
 const MARKER_COLORS = [
   '#4CAF50', '#2196F3', '#9C27B0', '#FF9800',
@@ -80,6 +81,9 @@ const getRandomColor = (oderId: string) => {
   return MARKER_COLORS[Math.abs(hash) % MARKER_COLORS.length];
 };
 
+// ============================================
+// FRIEND MARKER COMPONENT (unchanged - already animated)
+// ============================================
 const FriendMarker = ({ friend, coordinate, color }: any) => {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
@@ -96,7 +100,7 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
 
   return (
     <Marker.Animated
-      coordinate={coordinate}
+      coordinate={coordinate as any}
       title={friend.username}
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksViewChanges}
@@ -116,6 +120,34 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
           </Text>
         </View>
       )}
+    </Marker.Animated>
+  );
+};
+
+// ============================================
+// USER MARKER COMPONENT (Animated Version)
+// ============================================
+const UserMarker = ({
+  coordinate,
+  locationAccuracy,
+  theme
+}: {
+  coordinate: AnimatedRegion;
+  locationAccuracy: 'low' | 'high';
+  theme: typeof COLORS;
+}) => {
+  return (
+    <Marker.Animated
+      coordinate={coordinate as any}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={false}
+    >
+      <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
+        <View style={[
+          styles.userMarkerInner,
+          { backgroundColor: locationAccuracy === 'low' ? theme.lowAccuracyColor : theme.highAccuracyColor }
+        ]} />
+      </View>
     </Marker.Animated>
   );
 };
@@ -140,16 +172,36 @@ const DEFAULT_REGION = {
 
 const GOOD_ACCURACY_THRESHOLD = 50;
 
+// Animation duration for smooth marker movement
+const USER_ANIMATION_DURATION = 500;
+const FRIEND_MIN_ANIMATION_DURATION = 500;
+const FRIEND_MAX_ANIMATION_DURATION = 1500;
+
+// Helper to animate an AnimatedRegion (works on both iOS and Android)
+const animateMarker = (
+  animatedRegion: AnimatedRegion,
+  newCoordinate: { latitude: number; longitude: number },
+  duration: number
+) => {
+  // Cast any to bypass TypeScript strict checking on the timing API
+  (animatedRegion as any).timing({
+    latitude: newCoordinate.latitude,
+    longitude: newCoordinate.longitude,
+    latitudeDelta: 0,
+    longitudeDelta: 0,
+    duration,
+    useNativeDriver: false,
+  }).start();
+};
+
+
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState(DEFAULT_REGION);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
   const [searchText, setSearchText] = useState('');
   const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'high'>('low');
-  const animatedFriends = useRef(new Map()).current;
-  const { friendsMap, forceReload } = useSubscriptions();
   const [showModal, setShowModal] = useState(false);
   const [modalStats, setModalStats] = useState({
     type: 'error' as 'error' | 'success' | 'confirm',
@@ -157,12 +209,37 @@ export default function MapScreen() {
     message: ''
   });
 
+  // ✅ FIX 1: Animated user coordinate (prevents snappy jumping)
+  const userAnimatedCoordinate = useRef(new AnimatedRegion({
+    latitude: DEFAULT_REGION.latitude,
+    longitude: DEFAULT_REGION.longitude,
+    latitudeDelta: 0,
+    longitudeDelta: 0,
+  })).current;
+
+  // Track current user position
+  const currentUserPosition = useRef<{ latitude: number; longitude: number} | null>(null);
+
+  // Track if user has a location yet (for conditional rendering)
+  const [hasUserLocation, setHasUserLocation] = useState(false);
+
+  // Friend animated coordinates
+  const animatedFriends = useRef(new Map<string, {
+    coordinate: AnimatedRegion;
+    lastTime: number;
+  }>()).current;
+
+  const { friendsMap, forceReload } = useSubscriptions();
+
   const userIdRef = useRef<string | null>(null);
   const locationServiceRef = useRef<LocationService | null>(null);
 
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? DARK_THEME : COLORS;
 
+  // ============================================
+  // INITIALIZATION
+  // ============================================
   useEffect(() => {
     initializeMap();
 
@@ -171,20 +248,41 @@ export default function MapScreen() {
     };
   }, []);
 
+  // ============================================
+  // FRIENDS ARRAY (for status bar count)
+  // ============================================
   const friendsArray = useMemo(() => {
     return Array.from(friendsMap.values()).filter(
       f => f.isLocationSharing && f.latitude != null && f.longitude != null
     );
   }, [friendsMap]);
 
-  // Animate friend markers
+  // ============================================
+  // ✅ FIX 2: ANIMATE FRIEND MARKERS + CLEANUP STALE ENTRIES
+  // ============================================
   useEffect(() => {
+    // First, clean up friends no longer in friendsMap (removed friends)
+    const currentFriendIds = new Set(friendsMap.keys());
+    animatedFriends.forEach((_, id) => {
+      if (!currentFriendIds.has(id)) {
+        console.log(`🗑️ Cleaning up stale animated entry for friend: ${id}`);
+        animatedFriends.delete(id);
+      }
+    });
+
+    // Then animate existing friends
     friendsMap.forEach(friend => {
+      // Skip friends not sharing or without location
       if (!friend.isLocationSharing || friend.latitude == null || friend.longitude == null) {
-        animatedFriends.delete(friend.id);
+        // Remove from animated map if they stopped sharing
+        if (animatedFriends.has(friend.id)) {
+          console.log(`📍 Friend ${friend.username} stopped sharing, removing animated entry`);
+          animatedFriends.delete(friend.id);
+        }
         return;
       }
 
+      // Create new animated entry if needed
       if (!animatedFriends.has(friend.id)) {
         animatedFriends.set(friend.id, {
           coordinate: new AnimatedRegion({
@@ -198,27 +296,27 @@ export default function MapScreen() {
         return;
       }
 
-      const curFriendEntry = animatedFriends.get(friend.id);
+      // Animate to new position
+      const curFriendEntry = animatedFriends.get(friend.id)!;
       const now = Date.now();
-      const duration = Math.min(1500, Math.max(500, now - curFriendEntry.lastTime));
+      const duration = Math.min(
+        FRIEND_MAX_ANIMATION_DURATION,
+        Math.max(FRIEND_MIN_ANIMATION_DURATION, now - curFriendEntry.lastTime)
+      );
       curFriendEntry.lastTime = now;
 
-      curFriendEntry.coordinate.timing({
+      // Call the helper function to animate user location and movement
+      animateMarker(curFriendEntry.coordinate, {
         latitude: friend.latitude,
         longitude: friend.longitude,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }).start();
+      }, duration);
     });
-
-    return () => {
-      animatedFriends.clear();
-    };
+    // Note: We don't clear animatedFriends on unmount anymore
+    // because we handle cleanup properly above
   }, [friendsMap]);
 
   // ============================================
-  // INITIALIZATION
+  // MAP INITIALIZATION
   // ============================================
   const initializeMap = async () => {
     const startTime = Date.now();
@@ -267,10 +365,20 @@ export default function MapScreen() {
 
       if (initialLocation) {
         console.log(`✅ Got initial location in ${Date.now() - startTime}ms`);
-        setUserLocation({
+
+        // ✅ FIX: Set animated coordinate (no animation for first position)
+        userAnimatedCoordinate.setValue({
           latitude: initialLocation.latitude,
           longitude: initialLocation.longitude,
+          latitudeDelta: 0,
+          longitudeDelta: 0,
         });
+        currentUserPosition.current = {
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
+        };
+        setHasUserLocation(true);
+
         setRegion({
           latitude: initialLocation.latitude,
           longitude: initialLocation.longitude,
@@ -291,7 +399,7 @@ export default function MapScreen() {
       setLoading(false);
       console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
 
-      // STEP 6: Start tracking ONLY if user has location sharing enabled (their preference)
+      // STEP 6: Start tracking ONLY if user has location sharing enabled
       if (shouldShareLocation) {
         startTracking(user.userId);
       } else {
@@ -305,17 +413,27 @@ export default function MapScreen() {
   };
 
   // ============================================
-  // TRACKING
+  // TRACKING (with animated user marker)
   // ============================================
   const startTracking = (userId: string) => {
     const locationService = LocationService.getInstance();
 
     locationService.startLocationTracking(userId, (location: LocationUpdate) => {
-      setUserLocation({
+      // ✅ FIX: Animate user marker smoothly instead of jumping
+      animateMarker(userAnimatedCoordinate, {
         latitude: location.latitude,
         longitude: location.longitude,
-      });
+      }, USER_ANIMATION_DURATION);
 
+      // Store current position for centerOnUser
+      currentUserPosition.current = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
+      setHasUserLocation(true);
+
+      // Update accuracy indicator
       if (location.accuracy != null && location.accuracy < GOOD_ACCURACY_THRESHOLD) {
         setLocationAccuracy('high');
       }
@@ -354,9 +472,10 @@ export default function MapScreen() {
   };
 
   const centerOnUser = () => {
-    if (userLocation && mapRef.current) {
+    if (currentUserPosition.current && mapRef.current) {
       const newRegion = {
-        ...userLocation,
+        latitude: currentUserPosition.current.latitude,
+        longitude: currentUserPosition.current.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
@@ -427,20 +546,13 @@ export default function MapScreen() {
         initialRegion={region}
         showsUserLocation={false}
       >
-        {/* User Marker */}
-        {userLocation && (
-          <Marker
-            coordinate={userLocation}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
-              <View style={[
-                styles.userMarkerInner,
-                { backgroundColor: locationAccuracy === 'low' ? theme.lowAccuracyColor : theme.highAccuracyColor }
-              ]} />
-            </View>
-          </Marker>
+        {/* ✅ FIX: User Marker - Now Animated */}
+        {hasUserLocation && (
+          <UserMarker
+            coordinate={userAnimatedCoordinate}
+            locationAccuracy={locationAccuracy}
+            theme={theme}
+          />
         )}
 
         {/* Friend Markers */}
@@ -449,19 +561,9 @@ export default function MapScreen() {
             return null;
           }
 
-          if (!animatedFriends.has(friend.id)) {
-            animatedFriends.set(friend.id, {
-              coordinate: new AnimatedRegion({
-                latitude: friend.latitude,
-                longitude: friend.longitude,
-                latitudeDelta: 0,
-                longitudeDelta: 0,
-              }),
-              lastTime: Date.now(),
-            });
-          }
-
           const anim = animatedFriends.get(friend.id);
+          if (!anim) return null;
+
           const markerColor = getRandomColor(friend.id);
 
           return (
@@ -500,16 +602,16 @@ export default function MapScreen() {
           {friendsArray.length} friend{friendsArray.length !== 1 ? 's' : ''} online
         </Text>
         {locationAccuracy === 'low' && (
-          <View style={{flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center'}}>
-            <Text style={[styles.statusSubtext, {color: "#FFA500"}]}>
+          <View style={{ flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center' }}>
+            <Text style={[styles.statusSubtext, { color: '#FFA500' }]}>
               Improving Accuracy...
             </Text>
           </View>
         )}
         {locationAccuracy === 'high' && friendsArray.length > 0 && (
-          <View style={{flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center'}}>
-            <Text style={[styles.statusSubtext, {color: "#90EE90" }]}>
-              Real =Time Tracking
+          <View style={{ flexDirection: 'row', marginTop: width * 0.01, alignItems: 'center' }}>
+            <Text style={[styles.statusSubtext, { color: '#90EE90' }]}>
+              Real-Time Tracking
             </Text>
           </View>
         )}
