@@ -9,7 +9,7 @@ export default {
     scheme: "locationLink",
     platforms: ["android", "ios"],
     orientation: "portrait",
-    icon: "./assets/os_icon.png",
+    icon: "./assets/os_icon_3.png",
     userInterfaceStyle: "automatic",
     splash: {
       image: "./assets/loading_icon.png",
@@ -30,10 +30,6 @@ export default {
       }
     },
     android: {
-      adaptiveIcon: {
-        foregroundImage: "./assets/starting_icon.png",
-        backgroundColor: "#ffffff"
-      },
       package: "com.yourcompany.locationlink",
       config: {
         googleMaps: {

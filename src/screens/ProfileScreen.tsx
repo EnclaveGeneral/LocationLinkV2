@@ -60,7 +60,7 @@ export default function ProfileScreen() {
 
         // ✅ FIX: Removed the `!` that was inverting the value!
         // Was: setIsLocationSharing(!userData?.isLocationSharing);
-        setIsLocationSharing(userData?.isLocationSharing ?? false);
+        setIsLocationSharing(userData?.isLocationSharing ?? true);
 
         // ✅ FIX: REMOVED the rehydration logic that was calling startLocationTracking/stopLocationTracking
         // MapScreen is responsible for starting tracking based on user preference, not ProfileScreen.
