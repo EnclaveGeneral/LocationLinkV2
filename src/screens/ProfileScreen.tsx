@@ -21,7 +21,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
-  Platform
+  Platform,
+  AppState
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/authService';
@@ -31,6 +32,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { uploadData, getUrl } from 'aws-amplify/storage';
 import CustomModal from '@/components/modal';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('screen');
 
@@ -86,15 +88,36 @@ export default function ProfileScreen() {
         isLocationSharing: value,
       });
 
-      // 2️⃣ Start/stop tracking AFTER backend confirms
+      // 2️⃣ Update AsyncStorage for background task
+      await AsyncStorage.setItem('isLocationSharing', value.toString());
+
+      // 3️⃣ Handle tracking based on app state
       const locationService = LocationService.getInstance();
+      const appState = AppState.currentState;
+
       if (value) {
-        await locationService.startLocationTracking(user.id);
+        // User enabled sharing
+        if (appState === 'active') {
+          // App in foreground - MapScreen handles DB updates automatically
+          console.log('✅ Location sharing enabled (foreground)');
+        } else {
+          // App in background - start background task
+          await locationService.startBackgroundTracking(user.id, true);
+          console.log('✅ Location sharing enabled (background task started)');
+        }
       } else {
-        await locationService.stopLocationTracking();
+        // User disabled sharing
+        if (appState === 'active') {
+          // App in foreground - MapScreen will stop DB updates automatically
+          console.log('✅ Location sharing disabled (foreground tracking continues for UI)');
+        } else {
+          // App in background - stop background task
+          await locationService.stopBackgroundTracking();
+          console.log('✅ Location sharing disabled (background task stopped)');
+        }
       }
 
-      // 3️⃣ Update UI LAST
+      // 4️⃣ Update UI LAST
       setIsLocationSharing(value);
 
     } catch (error) {
@@ -114,27 +137,30 @@ export default function ProfileScreen() {
     }
   };
 
+
   const handleSignOut = async () => {
     try {
-      // Stop tracking (but DON'T change user preference in DB)
+      // Stop all tracking (but DON'T change user preference in DB)
       const locationService = LocationService.getInstance();
-      await locationService.stopLocationTracking();
+      await locationService.stopForegroundTracking();
+      await locationService.stopBackgroundTracking();
 
-      // ✅ FIX: REMOVED this line that was destroying user preference!
-      // Was: await dataService.updateUser(user.id, { isLocationSharing: false });
-      // The user's preference should be preserved so it resumes on next login.
+      // ✅ DO NOT write isLocationSharing=false to DB!
+      // The user's preference should be preserved for next login
 
+      // Sign out
       await authService.signOut();
       router.replace('/signin');
     } catch (error) {
-      setModalVisible(true);
       setModalContent({
         type: 'error',
-        title: 'Signout Error',
-        message: 'Failed to sign out'
+        title: 'Error Signing Out',
+        message: 'An error(s) has occured during sign out'
       });
+      setModalVisible(true);
     }
   };
+
 
   const loadAvatar = async (avatarKey: string) => {
     try {

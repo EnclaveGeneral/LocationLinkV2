@@ -11,6 +11,8 @@ interface CustomModalProps {
   onClose: () => void;
   type?: 'error' | 'success' | 'confirm';
   onConfirm?: () => void;
+  actionButtonText?: string; // Optional action button (e.g., "Open Settings")
+  onAction?: () => void; // Action button handler
 }
 
 export default function CustomModal({
@@ -19,7 +21,9 @@ export default function CustomModal({
   message,
   onClose,
   type = 'error',
-  onConfirm
+  onConfirm,
+  actionButtonText,
+  onAction
 }: CustomModalProps) {
 
   const handleConfirm = () => {
@@ -27,6 +31,12 @@ export default function CustomModal({
       onConfirm();
     } else {
       onClose();
+    }
+  }
+
+  const handleAction = () => {
+    if (onAction) {
+      onAction();
     }
   }
 
@@ -47,7 +57,7 @@ export default function CustomModal({
 
         >
 
-          {/* Prevents modal closing when modal itself is rapped */}
+          {/* Prevents modal closing when modal itself is wrapped */}
           <TouchableOpacity
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
@@ -80,6 +90,7 @@ export default function CustomModal({
       </Modal>
     );
   } else {
+    // Error or Success modal with optional action button
     return (
       <Modal
         visible={visible}
@@ -91,10 +102,10 @@ export default function CustomModal({
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
-          onPress={onClose} // Tap to close by anywhere outside
+          onPress={actionButtonText ? undefined : onClose} // Don't close on backdrop if action button present
 
         >
-          {/* Prevents modal closing when modal itself is rapped */}
+          {/* Prevents modal closing when modal itself is wrapped */}
           <TouchableOpacity
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
@@ -107,12 +118,31 @@ export default function CustomModal({
               </View>
 
               <View style={styles.buttonLayout}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonOne, type ==='error' ? styles.errorButton : styles.successButton]}
-                  onPress={handleConfirm}
-                >
-                  <Text style={styles.buttonText}>Confirm</Text>
-                </TouchableOpacity>
+                {/* If action button provided, show it alongside the main button */}
+                {actionButtonText && onAction ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonLeft, type === 'error' ? styles.errorButton : styles.successButton]}
+                      onPress={handleAction}
+                    >
+                      <Text style={[styles.buttonText, styles.leftButtonText]}>{actionButtonText}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonRight]}
+                      onPress={onClose}
+                    >
+                      <Text style={[styles.buttonText, styles.rightButtonText]}>Cancel</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  // Standard single button
+                  <TouchableOpacity
+                    style={[styles.button, styles.buttonOne, type === 'error' ? styles.errorButton : styles.successButton]}
+                    onPress={handleConfirm}
+                  >
+                    <Text style={styles.buttonText}>OK</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </TouchableOpacity>
@@ -164,6 +194,7 @@ const styles = StyleSheet.create({
     fontSize: width * 0.035,
     color: '#1c1a1aff',
     marginBottom: width * 0.025,
+    textAlign: 'center',
   },
   buttonLayout: {
     flexDirection: 'row',

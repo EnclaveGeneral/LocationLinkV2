@@ -53,6 +53,45 @@ export const dataService = {
     }
   },
 
+  /**
+   * Update user with retry logic for network resilience
+   * Retries up to maxRetries times with exponential backoff
+   * @param userId - User ID to update
+   * @param updates - Partial user object with fields to update
+   * @param maxRetries - Maximum number of retry attempts (default: 3)
+   */
+  async updateUserWithRetry(
+    userId: string,
+    updates: Partial<any>, // Use your actual User type here
+    maxRetries: number = 3
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Call the existing updateUser method
+        await this.updateUser(userId, updates);
+
+        // Success - return immediately
+        if (attempt > 1) {
+          console.log(`✅ DB write succeeded on attempt ${attempt}`);
+        }
+        return;
+
+      } catch (error) {
+        console.error(`❌ DB write failed (attempt ${attempt}/${maxRetries}):`, error);
+
+        // If this was the last attempt, throw the error
+        if (attempt === maxRetries) {
+          throw new Error(`Failed to update user after ${maxRetries} attempts: ${error}`);
+        }
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, etc.
+        const delayMs = 1000 * Math.pow(2, attempt - 1);
+        console.log(`⏳ Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  },
+
   async listUsers(filter?: any) {
     try {
       const { data, errors } = await client.models.User.list(filter ? { filter } : {});

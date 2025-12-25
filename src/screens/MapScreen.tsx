@@ -18,6 +18,9 @@ import {
   Dimensions,
   useColorScheme,
   Image,
+  AppState,
+  Linking,
+  Platform
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -163,8 +166,8 @@ const LOADING_MESSAGES: Record<LoadingStep, string> = {
 };
 
 const DEFAULT_REGION = {
-  latitude: 39.8283,
-  longitude: -98.5795,
+  latitude: 47.6062,
+  longitude: -122.3321,
   latitudeDelta: 0.05,
   longitudeDelta: 0.05,
 };
@@ -201,6 +204,9 @@ export default function MapScreen() {
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('auth');
   const [searchText, setSearchText] = useState('');
   const [locationAccuracy, setLocationAccuracy] = useState<'low' | 'high'>('low');
+  const [isFollowMode, setIsFollowMode] = useState(true); // Default to Follow Mode
+  const [isLocationSharing, setIsLocationSharing] = useState(false); // From DB
+  const [permissionDenied, setPermissionDenied] = useState(false); // Block map if no permissions
   const [showModal, setShowModal] = useState(false);
   const [modalStats, setModalStats] = useState({
     type: 'error' as 'error' | 'success' | 'confirm',
@@ -243,9 +249,54 @@ export default function MapScreen() {
     initializeMap();
 
     return () => {
-      // Cleanup handled by LocationService singleton
+      // Stop foreground tracking when MapScreen unmounts
+      const locationService = LocationService.getInstance();
+      locationService.stopForegroundTracking();
     };
   }, []);
+
+  // Add AppState Listener For Foreground / Background Transitions
+  useEffect(() => {
+    if (!userIdRef.current) return;
+
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      const locationService = LocationService.getInstance();
+
+      if (nextAppState === 'active') {
+        // App foregrounded
+        console.log('📱 App foregrounded');
+
+        // Stop background task if running
+        await locationService.stopBackgroundTracking();
+
+        // Resume foreground tracking if not already running
+        if (!locationService.isForegroundTracking()) {
+          await startForegroundTracking(userIdRef.current!, isLocationSharing);
+        }
+      } else if (nextAppState.match(/inactive|background/)) {
+        // App backgrounded
+        console.log('📱 App backgrounding...');
+
+        // Small delay to handle quick app switches
+        setTimeout(async () => {
+          if (AppState.currentState !== 'active') {
+            // App still in background after delay
+            await locationService.stopForegroundTracking();
+
+            // Start background task if isLocationSharing is true
+            if (isLocationSharing && userIdRef.current) {
+              await locationService.startBackgroundTracking(userIdRef.current, isLocationSharing);
+            }
+          }
+        }, 1000);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isLocationSharing]);
+
 
   // ============================================
   // FRIENDS ARRAY (for status bar count)
@@ -314,6 +365,14 @@ export default function MapScreen() {
     // because we handle cleanup properly above
   }, [friendsMap]);
 
+  const openLocationSettings = async () => {
+    try {
+      await Linking.openSettings();
+    } catch (error) {
+      console.error('Error opening settings:', error);
+    }
+  };
+
   // ============================================
   // MAP INITIALIZATION
   // ============================================
@@ -344,18 +403,21 @@ export default function MapScreen() {
       // STEP 3: Permission check
       setLoadingStep('permissions');
       const { status } = await Location.requestForegroundPermissionsAsync();
-
       if (status !== 'granted') {
         console.log('⚠️ Location permission not granted');
+        setPermissionDenied(true);
         setModalStats({
           type: 'error',
           title: 'Permission Required',
-          message: 'Location permission is required to show your position on the map.'
+          message: 'Location access is required to use the map. Tap "Open Settings" to enable permissions.',
         });
         setShowModal(true);
         setLoading(false);
         return;
       }
+
+      setIsLocationSharing(shouldShareLocation);
+
       console.log(`✅ Permissions granted (${Date.now() - startTime}ms)`);
 
       // STEP 4: Get initial location with multiple fallback strategies
@@ -424,11 +486,11 @@ export default function MapScreen() {
       console.log(`✅ Map ready in ${Date.now() - startTime}ms`);
 
       // STEP 6: Start tracking ONLY if user has location sharing enabled
-      if (shouldShareLocation) {
-        startTracking(user.userId);
-      } else {
-        console.log('📍 Location sharing disabled by user preference');
-      }
+      // STEP 6: Start foreground tracking (always runs for UI, conditionally writes to DB)
+      setLoadingStep('tracking');
+      await startForegroundTracking(user.userId, shouldShareLocation);
+      await new Promise(resolve => setTimeout(resolve, 200));
+
 
     } catch (error) {
       console.error('Error initializing map:', error);
@@ -440,31 +502,60 @@ export default function MapScreen() {
   // ============================================
   // TRACKING (with animated user marker)
   // ============================================
-  const startTracking = (userId: string) => {
+  const startForegroundTracking = async (userId: string, shouldShareLocation: boolean) => {
     const locationService = LocationService.getInstance();
 
-    locationService.startLocationTracking(userId, (location: LocationUpdate) => {
-      // ✅ FIX: Animate user marker smoothly instead of jumping
-      animateMarker(userAnimatedCoordinate, {
+    try {
+      await locationService.startForegroundTracking((location) => {
+        // 1. Always update UI (animate marker)
+        animateMarker(userAnimatedCoordinate, {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        }, USER_ANIMATION_DURATION);
+
+        currentUserPosition.current = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        };
+
+        setHasUserLocation(true);
+
+        // Update accuracy indicator
+        if (location.accuracy != null && location.accuracy < GOOD_ACCURACY_THRESHOLD) {
+          setLocationAccuracy('high');
+        }
+
+        // 2. Conditionally animate camera if in Follow Mode
+        if (isFollowMode && mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 500);
+        }
+
+        // 3. Conditionally write to DB based on isLocationSharing
+        if (shouldShareLocation) {
+          updateLocationInDB(userId, location);
+        }
+      });
+    } catch (error) {
+      console.error('Error starting foreground tracking:', error);
+    }
+  };
+
+  const updateLocationInDB = async (userId: string, location: LocationUpdate) => {
+    try {
+      await dataService.updateUserWithRetry(userId, {
         latitude: location.latitude,
         longitude: location.longitude,
-      }, USER_ANIMATION_DURATION);
-
-      // Store current position for centerOnUser
-      currentUserPosition.current = {
-        latitude: location.latitude,
-        longitude: location.longitude,
-      };
-
-      setHasUserLocation(true);
-
-      // Update accuracy indicator
-      if (location.accuracy != null && location.accuracy < GOOD_ACCURACY_THRESHOLD) {
-        setLocationAccuracy('high');
-      }
-    }).catch(err => {
-      console.error('Location tracking error:', err);
-    });
+        locationUpdatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('❌ Failed to update location after retries:', error);
+      // Silent fail - don't crash app
+    }
   };
 
   // ============================================
@@ -497,6 +588,14 @@ export default function MapScreen() {
     }
   };
 
+  // User Focus Panning Detection
+  const onMapPanDrag = () => {
+    if (isFollowMode) {
+      console.log('🗺️ User panned map - exiting Follow Mode');
+      setIsFollowMode(false);
+    }
+  };
+
   const centerOnUser = () => {
     if (currentUserPosition.current && mapRef.current) {
       const newRegion = {
@@ -508,6 +607,28 @@ export default function MapScreen() {
       mapRef.current.animateToRegion(newRegion, 1000);
     }
   };
+
+  // If permissions denied, show empty screen with persistent modal
+  if (permissionDenied) {
+    return (
+      <View style={[styles.centerContainer, { backgroundColor: theme.background }]}>
+        <Ionicons name='location' size={width * 0.2} color="#ccc" />
+        <Text style={[styles.emptyText, { color: '#999', marginTop: width * 0.05 }]}>
+          Location permission required
+        </Text>
+        <CustomModal
+          visible={showModal}
+          title={modalStats.title}
+          message={modalStats.message}
+          type={modalStats.type}
+          actionButtonText="Open Settings"
+          onAction={openLocationSettings}
+          onClose={() => {}} // Don't allow closing
+        />
+      </View>
+    );
+  }
+
 
   // ============================================
   // LOADING SCREEN
@@ -570,6 +691,7 @@ export default function MapScreen() {
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={region}
+        onPanDrag={onMapPanDrag}
         showsUserLocation={false}
       >
         {/* ✅ FIX: User Marker - Now Animated */}
@@ -611,6 +733,20 @@ export default function MapScreen() {
         <Ionicons name="locate" size={width * 0.06} color={theme.primary} />
       </TouchableOpacity>
 
+      {/* ADD Follow Me button (place it with your other buttons): */}
+      {!isFollowMode && hasUserLocation && (
+        <TouchableOpacity
+          style={[styles.followButton, { backgroundColor: theme.buttonBg }]}
+          onPress={() => {
+            setIsFollowMode(true);
+            centerOnUser(); // Recenter + enable following
+          }}
+        >
+          <Ionicons name="navigate" size={width * 0.06} color={theme.primary} />
+        </TouchableOpacity>
+      )}
+
+
       {/* Refresh Button */}
       <TouchableOpacity
         style={[styles.refreshButton, { backgroundColor: theme.buttonBg }]}
@@ -643,13 +779,20 @@ export default function MapScreen() {
         )}
       </View>
 
-      {/* Modal */}
+      {/* Custom Modal */}
       <CustomModal
         visible={showModal}
         title={modalStats.title}
         message={modalStats.message}
         type={modalStats.type}
-        onClose={() => setShowModal(false)}
+        actionButtonText={permissionDenied ? "Open Settings" : undefined}
+        onAction={permissionDenied ? openLocationSettings : undefined}
+        onClose={() => {
+          if (!permissionDenied) {
+            setShowModal(false);
+          }
+          // Don't close if permissions denied - keep modal persistent
+        }}
       />
     </View>
   );
@@ -722,6 +865,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: width * 0.0086,
     elevation: 5,
+  },
+    followButton: {
+    position: 'absolute',
+    right: width * 0.033,
+    bottom: width * 0.09, // Between recenter and refresh
+    width: width * 0.112,
+    height: width * 0.112,
+    borderRadius: width * 0.056,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: width * 0.0045 },
+    shadowOpacity: 0.25,
+    shadowRadius: width * 0.0086,
+    elevation: 5,
+  },
+  emptyText: {
+    fontSize: width * 0.04,
+    color: '#999',
+    textAlign: 'center',
   },
   refreshButton: {
     position: 'absolute',

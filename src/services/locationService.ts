@@ -1,78 +1,25 @@
-// src/services/locationService.ts - FIXED VERSION
+// src/services/locationService.ts - COMPLETELY REFACTORED
 //
-// FIXES APPLIED:
-// 1. REMOVED isLocationSharing=false write from stopLocationTracking()
-//    - This was destroying user preference on logout!
-// 2. Kept isLocationSharing=true write on startLocationTracking() and updateLocationInDB()
-//    - This ensures friends can see user when actively sharing
-// 3. Proper Low → Balanced upgrade flow for battery efficiency
+// NEW ARCHITECTURE:
+// 1. LocationService ONLY handles GPS tracking - no DB writes, no isLocationSharing logic
+// 2. MapScreen/ProfileScreen handle DB updates conditionally based on isLocationSharing
+// 3. AppState management for proper foreground/background transitions
+// 4. Use Balanced accuracy everywhere (no High accuracy needed)
+// 5. Progressive enhancement: Low → Balanced
 
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { dataService } from './dataService';
 import { AppState } from 'react-native';
 
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
 // Constants
-const DB_UPDATE_INTERVAL = 5000;
-const BG_DB_UPDATE_INTERVAL = 30000;
-const ACCURACY_THRESHOLD = 50;
-const BG_START_DELAY = 10000;
-
-// Background task - defined outside class
-TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-  if (error) {
-    console.error('Background location error:', error);
-    return;
-  }
-
-  if (!data) return;
-
-  const { locations } = data as { locations: Location.LocationObject[] };
-  const location = locations[0];
-  if (!location) return;
-
-  if (appState === 'active') {
-    return;
-  }
-
-
-  const userId = await AsyncStorage.getItem('currentUserId');
-  if (!userId) {
-    console.warn('⚠️ Background task: missing userId');
-    return;
-  }
-
-  try {
-    const lastUpdateStr = await AsyncStorage.getItem('bgLastDbUpdate');
-    const lastUpdate = lastUpdateStr ? Number(lastUpdateStr) : 0;
-
-    if (Date.now() - lastUpdate < BG_DB_UPDATE_INTERVAL) {
-      return;
-    }
-
-    const coords = {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-    };
-
-    await dataService.updateUser(userId, {
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      locationUpdatedAt: new Date().toISOString(),
-      isLocationSharing: true,
-    });
-
-    await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
-    await AsyncStorage.setItem('bgLastDbUpdate', Date.now().toString());
-
-    console.log('📍 Background location updated');
-  } catch (error) {
-    console.error('Background location DB update failed:', error);
-  }
-});
+const ACCURACY_THRESHOLD = 50; // Threshold to upgrade from Low to Balanced
+const FOREGROUND_TIME_INTERVAL = 5000; // 5 seconds
+const FOREGROUND_DISTANCE_INTERVAL = 10; // 10 meters
+const BACKGROUND_TIME_INTERVAL = 15000; // 15 seconds
+const BACKGROUND_DISTANCE_INTERVAL = 50; // 50 meters
 
 // Location data passed to callbacks
 export interface LocationUpdate {
@@ -81,19 +28,80 @@ export interface LocationUpdate {
   accuracy: number | null;
 }
 
-let appState = AppState.currentState;
+// Background task callback type
+type BackgroundTaskCallback = (location: LocationUpdate) => Promise<void>;
 
+// Track app state globally for background task
+let appState = AppState.currentState;
 AppState.addEventListener('change', nextState => {
   appState = nextState;
-})
+});
+
+// Background task - defined outside class
+// This is registered globally and persists across service resets
+TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
+  if (error) {
+    console.error('❌ Background location error:', error);
+    return;
+  }
+
+  if (!data) return;
+
+  // Don't process if app is actually in foreground
+  if (appState === 'active') {
+    return;
+  }
+
+  const { locations } = data as { locations: Location.LocationObject[] };
+  const location = locations[0];
+  if (!location) return;
+
+  const userId = await AsyncStorage.getItem('currentUserId');
+  if (!userId) {
+    console.warn('⚠️ Background task: missing userId');
+    return;
+  }
+
+  // Check if user has location sharing enabled
+  const isLocationSharingStr = await AsyncStorage.getItem('isLocationSharing');
+  const isLocationSharing = isLocationSharingStr === 'true';
+
+  if (!isLocationSharing) {
+    console.log('⚠️ Background task: location sharing disabled, skipping DB update');
+    return;
+  }
+
+  const coords = {
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+  };
+
+  try {
+    // Import dataService dynamically to avoid circular dependencies
+    const { dataService } = require('./dataService');
+
+    // Write to DB with retry logic
+    await dataService.updateUserWithRetry(userId, {
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      locationUpdatedAt: new Date().toISOString(),
+    });
+
+    // Cache location for next app launch
+    await AsyncStorage.setItem('lastLocation', JSON.stringify(coords));
+
+    console.log('📍 Background location updated to DB');
+  } catch (error) {
+    console.error('❌ Background DB update failed after retries:', error);
+    // Silent fail - don't crash the background task
+  }
+});
 
 export class LocationService {
   private static instance: LocationService;
   private locationSubscription: Location.LocationSubscription | null = null;
   private isTracking = false;
   private hasUpgradedToBalanced = false;
-  private lastDbUpdateTime = 0;
-  private userId: string | null = null;
   private onLocationUpdate: ((location: LocationUpdate) => void) | null = null;
 
   static getInstance(): LocationService {
@@ -105,12 +113,14 @@ export class LocationService {
 
   static resetInstance(): void {
     if (LocationService.instance) {
-      LocationService.instance.stopLocationTracking();
+      LocationService.instance.stopForegroundTracking();
     }
     LocationService.instance = new LocationService();
   }
 
-  // Get location FAST for initial map display
+  // ============================================
+  // FAST INITIAL LOCATION (for map centering)
+  // ============================================
   async getFastLocation(): Promise<LocationUpdate | null> {
     try {
       // Strategy 1: Cached location (instant!)
@@ -123,7 +133,7 @@ export class LocationService {
 
       // Strategy 2: Last known position (very fast)
       const lastKnown = await Location.getLastKnownPositionAsync({
-        maxAge: 10 * 60 * 1000,
+        maxAge: 10 * 60 * 1000, // 10 minutes
       });
 
       if (lastKnown) {
@@ -140,7 +150,7 @@ export class LocationService {
         return coords;
       }
 
-      // Strategy 3: Low accuracy with timeout
+      // Strategy 3: Low accuracy with timeout (3 second max wait)
       console.log('📍 Getting low-accuracy location...');
       const location = await Promise.race([
         Location.getCurrentPositionAsync({
@@ -150,7 +160,7 @@ export class LocationService {
       ]);
 
       if (location && 'coords' in location) {
-        console.log('📍 Got low-accuracy location');
+        console.log('✅ Got low-accuracy location');
         const coords = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
@@ -166,18 +176,19 @@ export class LocationService {
       console.log('⚠️ Could not get fast location');
       return null;
     } catch (error) {
-      console.error('Error getting fast location:', error);
+      console.error('❌ Error getting fast location:', error);
       return null;
     }
   }
 
-  // Start location tracking
-  async startLocationTracking(
-    userId: string,
-    onLocationUpdate?: (location: LocationUpdate) => void
+  // ============================================
+  // FOREGROUND TRACKING
+  // ============================================
+  async startForegroundTracking(
+    onLocationUpdate: (location: LocationUpdate) => void
   ): Promise<void> {
     if (this.isTracking) {
-      console.log('⚠️ Location tracking already active');
+      console.log('⚠️ Foreground tracking already active');
       return;
     }
 
@@ -187,47 +198,26 @@ export class LocationService {
       throw new Error('Location permission not granted');
     }
 
-    // Store for later use
-    this.userId = userId;
-    this.onLocationUpdate = onLocationUpdate || null;
+    // Store callback
+    this.onLocationUpdate = onLocationUpdate;
     this.isTracking = true;
     this.hasUpgradedToBalanced = false;
 
-    await AsyncStorage.setItem('currentUserId', userId);
-
-    // Set isLocationSharing=true in DB when tracking starts
-    // This lets friends know we're actively sharing
-    try {
-      await dataService.updateUser(userId, {
-        isLocationSharing: true,
-      });
-      console.log('✅ Set isLocationSharing=true in DB');
-    } catch (error) {
-      console.error('Failed to update isLocationSharing:', error);
-    }
-
-    // Start with LOW accuracy - fast updates, battery friendly
-    console.log('🚀 Starting LOW accuracy tracking...');
+    // Start with LOW accuracy - fast GPS lock, battery friendly
+    console.log('🚀 Starting LOW accuracy foreground tracking...');
     this.locationSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Low,
-        timeInterval: 2000,
-        distanceInterval: 5,
+        timeInterval: 2000, // 2 seconds during cold start
+        distanceInterval: 5, // 5 meters
       },
       (location) => this.handleLocationUpdate(location)
     );
 
-    console.log('✅ Foreground location tracking started (LOW accuracy)');
-
-    // Start background tracking after a delay
-    setTimeout(() => {
-      if (this.isTracking) {
-        this.startBackgroundTracking();
-      }
-    }, BG_START_DELAY);
+    console.log('✅ Foreground tracking started (LOW accuracy)');
   }
 
-  // Handle location updates
+  // Handle location updates and upgrade to Balanced when ready
   private async handleLocationUpdate(location: Location.LocationObject): Promise<void> {
     const coords: LocationUpdate = {
       latitude: location.coords.latitude,
@@ -235,7 +225,7 @@ export class LocationService {
       accuracy: location.coords.accuracy,
     };
 
-    // Notify UI with accuracy included
+    // Notify callback (MapScreen will update UI)
     this.onLocationUpdate?.(coords);
 
     // Cache location
@@ -243,12 +233,6 @@ export class LocationService {
       latitude: coords.latitude,
       longitude: coords.longitude,
     }));
-
-    // Throttled DB update
-    if (Date.now() - this.lastDbUpdateTime >= DB_UPDATE_INTERVAL) {
-      this.lastDbUpdateTime = Date.now();
-      this.updateLocationInDB(coords);
-    }
 
     // Check if we should upgrade to Balanced accuracy
     if (!this.hasUpgradedToBalanced &&
@@ -260,7 +244,7 @@ export class LocationService {
     }
   }
 
-  // Upgrade to Balanced accuracy
+  // Upgrade to Balanced accuracy (final accuracy level - no High needed)
   private async upgradeToBalanced(): Promise<void> {
     const perms = await Location.getForegroundPermissionsAsync();
     if (!perms.granted) {
@@ -278,8 +262,8 @@ export class LocationService {
     this.locationSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
-        timeInterval: 5000,
-        distanceInterval: 10,
+        timeInterval: FOREGROUND_TIME_INTERVAL, // 5 seconds
+        distanceInterval: FOREGROUND_DISTANCE_INTERVAL, // 10 meters
       },
       (location) => this.handleLocationUpdate(location)
     );
@@ -287,8 +271,24 @@ export class LocationService {
     console.log('✅ Upgraded to BALANCED accuracy tracking');
   }
 
-  // Background tracking
-  private async startBackgroundTracking(): Promise<void> {
+  // Stop foreground tracking (doesn't affect background task)
+  async stopForegroundTracking(): Promise<void> {
+    if (this.locationSubscription) {
+      this.locationSubscription.remove();
+      this.locationSubscription = null;
+    }
+
+    this.isTracking = false;
+    this.hasUpgradedToBalanced = false;
+    this.onLocationUpdate = null;
+
+    console.log('🛑 Foreground tracking stopped');
+  }
+
+  // ============================================
+  // BACKGROUND TRACKING
+  // ============================================
+  async startBackgroundTracking(userId: string, isLocationSharing: boolean): Promise<void> {
     try {
       if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
         console.log('⚠️ Background task not defined');
@@ -307,11 +307,14 @@ export class LocationService {
         return;
       }
 
+      // Store userId and isLocationSharing for background task
+      await AsyncStorage.setItem('currentUserId', userId);
+      await AsyncStorage.setItem('isLocationSharing', isLocationSharing.toString());
+
       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
         accuracy: Location.Accuracy.Balanced,
-        timeInterval: 30000,
-        distanceInterval: 50,
-        deferredUpdatesInterval: 60000,
+        timeInterval: BACKGROUND_TIME_INTERVAL, // 15 seconds
+        distanceInterval: BACKGROUND_DISTANCE_INTERVAL, // 50 meters
         showsBackgroundLocationIndicator: true,
         foregroundService: {
           notificationTitle: 'LocationLink',
@@ -320,62 +323,43 @@ export class LocationService {
         },
       });
 
-      console.log('✅ Background location tracking started');
+      console.log('✅ Background tracking started');
     } catch (error) {
-      console.error('Error starting background tracking:', error);
+      console.error('❌ Error starting background tracking:', error);
     }
   }
 
-  // Stop tracking - DOES NOT MODIFY USER PREFERENCE IN DB!
-  // The user's isLocationSharing preference is preserved so it resumes on next login
-  async stopLocationTracking(): Promise<void> {
-    if (this.locationSubscription) {
-      this.locationSubscription.remove();
-      this.locationSubscription = null;
-    }
-
+  async stopBackgroundTracking(): Promise<void> {
     try {
       const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       if (hasStarted) {
         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-        console.log('🛑 Background location tracking stopped');
+        // Clean up AsyncStorage
+        await AsyncStorage.removeItem('currentUserId');
+        await AsyncStorage.removeItem('isLocationSharing');
+        console.log('🛑 Background tracking stopped');
       }
     } catch (error) {
-      console.error('Error stopping background tracking:', error);
+      console.error('❌ Error stopping background tracking:', error);
     }
-
-    // ✅ FIX: DO NOT write isLocationSharing=false to DB here!
-    // The user's preference should be preserved across sessions.
-    // We only stop the actual tracking, not change their preference.
-
-    await AsyncStorage.removeItem('currentUserId');
-    this.isTracking = false;
-    this.hasUpgradedToBalanced = false;
-    this.userId = null;
-    this.onLocationUpdate = null;
-
-    console.log('🛑 Location tracking stopped');
   }
 
-  // Update location in DB
-  private updateLocationInDB(coords: LocationUpdate): void {
-    if (!this.userId) return;
-
-    dataService.updateUser(this.userId, {
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      locationUpdatedAt: new Date().toISOString(),
-      isLocationSharing: true,
-    }).catch(error => {
-      console.error('Error updating location in DB:', error);
-    });
-  }
-
-  isTrackingActive(): boolean {
+  // ============================================
+  // STATUS CHECKS
+  // ============================================
+  isForegroundTracking(): boolean {
     return this.isTracking;
   }
 
-  hasUpgraded(): boolean {
+  hasUpgradedAccuracy(): boolean {
     return this.hasUpgradedToBalanced;
+  }
+
+  async isBackgroundTracking(): Promise<boolean> {
+    try {
+      return await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+    } catch {
+      return false;
+    }
   }
 }
