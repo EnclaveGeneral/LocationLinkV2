@@ -29,7 +29,10 @@ import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+
+import Feather from '@expo/vector-icons/Feather';
+
 import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
@@ -57,7 +60,7 @@ const COLORS = {
 const DARK_THEME = {
   background: '#191919ff',
   primary: '#9420ceff',
-  accent: '#4709b1ff',
+  accent: '#9420ceff',
   statusBar: 'rgba(117, 9, 167, 1)',
   statusText: '#ffffff',
   statusSubtext: '#90EE90',
@@ -142,7 +145,7 @@ const UserMarker = ({
     <Marker.Animated
       coordinate={coordinate as any}
       anchor={{ x: 0.5, y: 0.5 }}
-      tracksViewChanges={false}
+      tracksViewChanges={true}
     >
       <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
         <View style={[
@@ -175,9 +178,9 @@ const DEFAULT_REGION = {
 const GOOD_ACCURACY_THRESHOLD = 50;
 
 // Animation duration for smooth marker movement
-const USER_ANIMATION_DURATION = 500;
-const FRIEND_MIN_ANIMATION_DURATION = 500;
-const FRIEND_MAX_ANIMATION_DURATION = 1500;
+const USER_ANIMATION_DURATION = 5000;
+const FRIEND_MIN_ANIMATION_DURATION = 5000;
+const FRIEND_MAX_ANIMATION_DURATION = 30000;
 
 // Helper to animate an AnimatedRegion (works on both iOS and Android)
 const animateMarker = (
@@ -351,7 +354,7 @@ export default function MapScreen() {
       const now = Date.now();
       const duration = Math.min(
         FRIEND_MAX_ANIMATION_DURATION,
-        Math.max(FRIEND_MIN_ANIMATION_DURATION, now - curFriendEntry.lastTime)
+        Math.max(FRIEND_MIN_ANIMATION_DURATION, (now - curFriendEntry.lastTime) * 0.9)
       );
       curFriendEntry.lastTime = now;
 
@@ -402,14 +405,29 @@ export default function MapScreen() {
 
       // STEP 3: Permission check
       setLoadingStep('permissions');
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('⚠️ Location permission not granted');
+      const foreResponse = await Location.requestForegroundPermissionsAsync();
+      if (foreResponse.status !== 'granted') {
+        console.log('⚠️ Foreground Location permission not granted');
         setPermissionDenied(true);
         setModalStats({
           type: 'error',
-          title: 'Permission Required',
-          message: 'Location access is required to use the map. Tap "Open Settings" to enable permissions.',
+          title: 'Location Permission Required',
+          message: 'LocationLink requires foreground permission, Tap "Open Settings" to enable permissions.',
+        });
+        setShowModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // STEP 3.5: Ask Background Permission
+      const backResponse = await Location.requestBackgroundPermissionsAsync();
+      if (backResponse.status !== 'granted') {
+        console.log('⚠️ Background Location permission not granted');
+        setPermissionDenied(true);
+        setModalStats({
+          type: 'error',
+          title: 'Location Permission Required',
+          message: 'LocationLink requires background permission. Tap "Open Settings" to enable permissions.',
         });
         setShowModal(true);
         setLoading(false);
@@ -523,6 +541,8 @@ export default function MapScreen() {
         // Update accuracy indicator
         if (location.accuracy != null && location.accuracy < GOOD_ACCURACY_THRESHOLD) {
           setLocationAccuracy('high');
+        } else if (locationService.hasUpgradedAccuracy()) {
+          setLocationAccuracy('high');
         }
 
         // 2. Conditionally animate camera if in Follow Mode
@@ -614,7 +634,7 @@ export default function MapScreen() {
       <View style={[styles.centerContainer, { backgroundColor: theme.background }]}>
         <Ionicons name='location' size={width * 0.2} color="#ccc" />
         <Text style={[styles.emptyText, { color: '#999', marginTop: width * 0.05 }]}>
-          Location permission required
+          LocationLink App Requires Both Foreground and Background Location Permissions!
         </Text>
         <CustomModal
           visible={showModal}
@@ -680,7 +700,7 @@ export default function MapScreen() {
             onChangeText={setSearchText}
             onSubmitEditing={searchFriend}
           />
-          <Ionicons name="search" size={width * 0.05} color={theme.accent} />
+          <FontAwesome5 name="search-location" size={width * 0.05} color={theme.accent} />
         </View>
         <WebSocketIndicator />
       </View>
@@ -725,12 +745,13 @@ export default function MapScreen() {
         })}
       </MapView>
 
+
       {/* Center on User Button */}
       <TouchableOpacity
         style={[styles.centerButton, { backgroundColor: theme.buttonBg }]}
         onPress={centerOnUser}
       >
-        <Ionicons name="locate" size={width * 0.06} color={theme.primary} />
+        <Ionicons name="locate-sharp" size={width * 0.06} color={theme.primary} />
       </TouchableOpacity>
 
       {/* ADD Follow Me button (place it with your other buttons): */}
@@ -755,8 +776,9 @@ export default function MapScreen() {
           console.log('🔄 Manual refresh triggered');
         }}
       >
-        <Ionicons name="refresh" size={width * 0.06} color={theme.primary} />
+        <Feather name="refresh-ccw" size={width * 0.06} color={theme.primary} />
       </TouchableOpacity>
+
 
       {/* Status Bar */}
       <View style={[styles.statusBar, { backgroundColor: theme.statusBar }]}>
@@ -854,7 +876,7 @@ const styles = StyleSheet.create({
   centerButton: {
     position: 'absolute',
     right: width * 0.033,
-    bottom: width * 0.223,
+    bottom: width * 0.325,
     width: width * 0.112,
     height: width * 0.112,
     borderRadius: width * 0.056,
@@ -866,10 +888,10 @@ const styles = StyleSheet.create({
     shadowRadius: width * 0.0086,
     elevation: 5,
   },
-    followButton: {
+  followButton: {
     position: 'absolute',
     right: width * 0.033,
-    bottom: width * 0.09, // Between recenter and refresh
+    bottom: width * 0.475, // Between recenter and refresh
     width: width * 0.112,
     height: width * 0.112,
     borderRadius: width * 0.056,
@@ -889,7 +911,7 @@ const styles = StyleSheet.create({
   refreshButton: {
     position: 'absolute',
     right: width * 0.033,
-    bottom: width * 0.357,
+    bottom: width * 0.175,
     width: width * 0.112,
     height: width * 0.112,
     borderRadius: width * 0.056,
