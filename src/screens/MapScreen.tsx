@@ -405,33 +405,46 @@ export default function MapScreen() {
 
       // STEP 3: Permission check
       setLoadingStep('permissions');
-      const foreResponse = await Location.requestForegroundPermissionsAsync();
-      if (foreResponse.status !== 'granted') {
-        console.log('⚠️ Foreground Location permission not granted');
-        setPermissionDenied(true);
-        setModalStats({
-          type: 'error',
-          title: 'Location Permission Required',
-          message: 'LocationLink requires foreground permission, Tap "Open Settings" to enable permissions.',
-        });
-        setShowModal(true);
-        setLoading(false);
-        return;
+
+      // CHeck to see if we already have an existing permissions
+
+
+      const curForeGroundPerm = (await Location.getForegroundPermissionsAsync()).status;
+
+      if (curForeGroundPerm !== 'granted') {
+        const foreResponse = await Location.requestForegroundPermissionsAsync();
+        if (foreResponse.status !== 'granted') {
+          console.log('⚠️ Foreground Location permission not granted');
+          setPermissionDenied(true);
+          setModalStats({
+            type: 'error',
+            title: 'Location Permission Required',
+            message: 'LocationLink requires foreground permission, Tap "Open Settings" to enable permissions.',
+          });
+          setShowModal(true);
+          setLoading(false);
+          return;
+        }
       }
 
+      // Check if background permission already exists
+      const curBackGroundPerm = (await Location.getBackgroundPermissionsAsync()).status;
+
       // STEP 3.5: Ask Background Permission
-      const backResponse = await Location.requestBackgroundPermissionsAsync();
-      if (backResponse.status !== 'granted') {
-        console.log('⚠️ Background Location permission not granted');
-        setPermissionDenied(true);
-        setModalStats({
-          type: 'error',
-          title: 'Location Permission Required',
-          message: 'LocationLink requires background permission. Tap "Open Settings" to enable permissions.',
-        });
-        setShowModal(true);
-        setLoading(false);
-        return;
+      if (curBackGroundPerm !== 'granted') {
+        const backResponse = await Location.requestBackgroundPermissionsAsync();
+        if (backResponse.status !== 'granted') {
+          console.log('⚠️ Background Location permission not granted');
+          setPermissionDenied(true);
+          setModalStats({
+            type: 'error',
+            title: 'Location Permission Required',
+            message: 'LocationLink requires background permission. Tap "Open Settings" to enable permissions.',
+          });
+          setShowModal(true);
+          setLoading(false);
+          return;
+        }
       }
 
       setIsLocationSharing(shouldShareLocation);

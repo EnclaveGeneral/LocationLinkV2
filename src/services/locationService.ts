@@ -156,7 +156,7 @@ export class LocationService {
         Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Low,
         }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
       ]);
 
       if (location && 'coords' in location) {
@@ -193,7 +193,7 @@ export class LocationService {
     }
 
     // Request permissions
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') {
       throw new Error('Location permission not granted');
     }
@@ -301,10 +301,14 @@ export class LocationService {
         return;
       }
 
-      const { status } = await Location.requestBackgroundPermissionsAsync();
+      const { status } = await Location.getBackgroundPermissionsAsync();
       if (status !== 'granted') {
-        console.log('⚠️ Background location permission not granted');
-        return;
+        // Try requesting it again
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status != 'granted') {
+          console.log('⚠️ Background location permission not granted');
+          return;
+        }
       }
 
       // Store userId and isLocationSharing for background task
