@@ -211,11 +211,11 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
 
         // Friend location/status updates
-        wsService.on('locationUpdate', (data: any) => {
+        wsService.on('userUpdate', (data: any) => {
           if (!mounted) return;
 
           setFriends(prev => {
-            const index = prev.findIndex(f => f.id === data.userId);
+            const index = prev.findIndex(f => f.id === data.id);
             if (index === -1) return prev;
 
             const newFriends = [...prev];

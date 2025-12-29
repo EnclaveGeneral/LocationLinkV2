@@ -7,7 +7,7 @@
 // 4. ✅ User preference respected for location sharing
 // 5. ✅ Dark/light theme support for map and tab bar
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -25,6 +25,7 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { LocationService, LocationUpdate } from '../services/locationService';
+import { WebSocketService } from '../services/websocketService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
@@ -90,25 +91,32 @@ const getRandomColor = (oderId: string) => {
 // FRIEND MARKER COMPONENT (unchanged - already animated)
 // ============================================
 const FriendMarker = ({ friend, coordinate, color }: any) => {
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  // Load once and keep it for friend pfps
+  const tracksViewChangesRef = useRef(true);
+  const hasLoadedRef = useRef(false);
 
-  useEffect(() => {
-    if (!friend.avatarUrl) {
-      const timer = setTimeout(() => setTracksViewChanges(false), 500);
-      return () => clearTimeout(timer);
+  const onImageLoad = useCallback(() => {
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      tracksViewChangesRef.current = false;  // ✅ Changes value without re-render!
+      console.log(`✅ Image loaded for ${friend.username}, stopped tracking changes`);
     }
-  }, [friend.avatarUrl]);
+  }, [friend.username]);
 
-  const onImageLoad = () => {
-    setTimeout(() => setTracksViewChanges(false), 100);
-  };
+  // Reset tracking only when avatar URL actually changes (e.g. user updates profile pic)
+  useEffect(() => {
+    if (friend.avatarUrl && !hasLoadedRef.current) {
+      console.log(`🖼️ Loading avatar for ${friend.username}`);
+      tracksViewChangesRef.current = true;
+    }
+  }, [friend.avatarUrl, friend.username]);
 
   return (
     <Marker.Animated
       coordinate={coordinate as any}
       title={friend.username}
       anchor={{ x: 0.5, y: 0.5 }}
-      tracksViewChanges={tracksViewChanges}
+      tracksViewChanges={tracksViewChangesRef.current}
     >
       {friend.avatarUrl ? (
         <View style={[styles.friendMarker, { backgroundColor: 'transparent' }]}>
@@ -258,44 +266,159 @@ export default function MapScreen() {
     };
   }, []);
 
-  // Add AppState Listener For Foreground / Background Transitions
+  // ============================================
+  // APPSTATE LISTENER - CROSS-PLATFORM
+  // ============================================
   useEffect(() => {
-    if (!userIdRef.current) return;
+    console.log('🔧 ========================================');
+    console.log('🔧 AppState listener MOUNTING');
+    console.log('🔧 Initial state:', AppState.currentState);
+    console.log('🔧 userIdRef:', userIdRef.current);
+    console.log('🔧 ========================================');
+
+    if (!userIdRef.current) {
+      console.log('⚠️ No userIdRef, skipping listener');
+      return;
+    }
+
+    let transitionInProgress = false;
+    let lastState = AppState.currentState;
+    let backgroundTrackingStarted = false; // Track if we already started background
 
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      console.log('🔔 AppState:', lastState, '→', nextAppState);
+
+      if (transitionInProgress) {
+        console.log('⚠️ Transition in progress, queuing...');
+        return;
+      }
+
       const locationService = LocationService.getInstance();
+      const wsService = WebSocketService.getInstance();
 
-      if (nextAppState === 'active') {
-        // App foregrounded
-        console.log('📱 App foregrounded');
+      try {
+        // ============================================
+        // FOREGROUND (background/inactive → active)
+        // ============================================
+        if (nextAppState === 'active' && lastState !== 'active') {
+          transitionInProgress = true;
+          backgroundTrackingStarted = false; // Reset flag
 
-        // Stop background task if running
-        await locationService.stopBackgroundTracking();
+          console.log('📱 ========================================');
+          console.log('📱 FOREGROUND TRANSITION');
+          console.log('📱 ========================================');
 
-        // Resume foreground tracking if not already running
-        if (!locationService.isForegroundTracking()) {
-          await startForegroundTracking(userIdRef.current!, isLocationSharing);
-        }
-      } else if (nextAppState.match(/inactive|background/)) {
-        // App backgrounded
-        console.log('📱 App backgrounding...');
+          // Stop background tracking
+          console.log('🛑 Stopping background tracking...');
+          await locationService.stopBackgroundTracking();
+          console.log('✅ Background stopped');
 
-        // Small delay to handle quick app switches
-        setTimeout(async () => {
-          if (AppState.currentState !== 'active') {
-            // App still in background after delay
+          // Reconnect WebSocket
+          console.log('🔵 Reconnecting WebSocket...');
+          if (!wsService.isConnected()) {
+            await wsService.connect(userIdRef.current!);
+            console.log('✅ WebSocket connected');
+          }
+
+          // Start foreground tracking
+          if (!locationService.isForegroundTracking()) {
+            console.log('🚀 Starting foreground tracking...');
+            await startForegroundTracking(userIdRef.current!, isLocationSharing);
+            console.log('✅ Foreground started');
+          }
+
+          console.log('📱 FOREGROUND COMPLETE ✅');
+          transitionInProgress = false;
+
+        // ============================================
+        // INACTIVE (active → inactive)
+        // iOS uses this, Android skips it
+        // ============================================
+        } else if (nextAppState === 'inactive' && lastState === 'active') {
+          console.log('📱 App going INACTIVE (iOS flow)');
+
+          // Start background tracking during inactive (iOS requirement)
+          if (isLocationSharing && userIdRef.current && !backgroundTrackingStarted) {
+            transitionInProgress = true;
+
+            console.log('🔵 Starting background tracking (iOS: during inactive)...');
+            try {
+              await locationService.startBackgroundTracking(userIdRef.current, isLocationSharing);
+              backgroundTrackingStarted = true;
+              console.log('✅ Background started');
+            } catch (error) {
+              console.error('❌ Background start failed:', error);
+            }
+
+            transitionInProgress = false;
+          }
+
+        // ============================================
+        // BACKGROUND (inactive → background OR active → background)
+        // ============================================
+        } else if (nextAppState === 'background') {
+
+          if (lastState === 'inactive') {
+            // iOS flow: inactive → background
+            console.log('📱 Now BACKGROUND (iOS: after inactive)');
+
+            // Background already started in inactive, just cleanup
+            console.log('🔴 Disconnecting WebSocket...');
+            wsService.disconnect();
+
+            console.log('🛑 Stopping foreground tracking...');
             await locationService.stopForegroundTracking();
 
-            // Start background task if isLocationSharing is true
-            if (isLocationSharing && userIdRef.current) {
-              await locationService.startBackgroundTracking(userIdRef.current, isLocationSharing);
+            console.log('📱 BACKGROUND COMPLETE ✅');
+
+          } else if (lastState === 'active') {
+            // Android flow: active → background (skipped inactive!)
+            transitionInProgress = true;
+
+            console.log('📱 ========================================');
+            console.log('📱 BACKGROUND TRANSITION (Android: no inactive)');
+            console.log('📱 ========================================');
+
+            // Disconnect WebSocket first
+            console.log('🔴 Disconnecting WebSocket...');
+            wsService.disconnect();
+            console.log('✅ WebSocket disconnected');
+
+            // Stop foreground tracking
+            console.log('🛑 Stopping foreground tracking...');
+            await locationService.stopForegroundTracking();
+            console.log('✅ Foreground stopped');
+
+            // Try to start background (may fail on Android 12+)
+            if (isLocationSharing && userIdRef.current && !backgroundTrackingStarted) {
+              console.log('🔵 Attempting background tracking (Android)...');
+
+              try {
+                await locationService.startBackgroundTracking(userIdRef.current, isLocationSharing);
+                backgroundTrackingStarted = true;
+                console.log('✅ Background started');
+              } catch (error) {
+                console.error('❌ Background failed (Android 12+ restriction):', error);
+                console.log('💡 Will work on next foreground → background cycle');
+              }
             }
+
+            console.log('📱 BACKGROUND COMPLETE ✅');
+            transitionInProgress = false;
           }
-        }, 1000);
+        }
+
+      } catch (error) {
+        console.error('❌ Transition error:', error);
+      } finally {
+        lastState = nextAppState;
       }
     });
 
+    console.log('✅ AppState listener registered');
+
     return () => {
+      console.log('🔧 AppState listener unmounting');
       subscription.remove();
     };
   }, [isLocationSharing]);
@@ -376,6 +499,32 @@ export default function MapScreen() {
     }
   };
 
+  const requestNotificationPermission = async () => {
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      try {
+        const { PermissionsAndroid } = require('react-native');
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+          {
+            title: 'Notification Permission',
+            message: 'LocationLink requires notification permission to notify you of important transitions.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('✅ Notification permission granted');
+        } else {
+          console.log('⚠️ Notification permission denied');
+        }
+      } catch (err) {
+        console.warn('Error requesting notification permission:', err);
+      }
+    }
+  };
+
   // ============================================
   // MAP INITIALIZATION
   // ============================================
@@ -447,9 +596,22 @@ export default function MapScreen() {
         }
       }
 
+      // After location permissions are granted
+      console.log(`✅ Permissions granted (${Date.now() - startTime}ms)`);
+
+      // ✅ Request notification permission (Android 13+)
+      await requestNotificationPermission();
+
+
       setIsLocationSharing(shouldShareLocation);
 
       console.log(`✅ Permissions granted (${Date.now() - startTime}ms)`);
+
+      // Ask for notification permissions
+      const { status: notifStatus } = await Location.getForegroundPermissionsAsync();
+      if (notifStatus !== 'granted') {
+        await Location.requestForegroundPermissionsAsync();
+      }
 
       // STEP 4: Get initial location with multiple fallback strategies
       setLoadingStep('location');

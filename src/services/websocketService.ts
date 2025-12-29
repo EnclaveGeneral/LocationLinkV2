@@ -64,19 +64,33 @@ export class WebSocketService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
-        this.emit('error', error);
-      };
+      // ✅ FIX: Don't crash on normal disconnects during backgrounding
+      const errorMsg = JSON.stringify(error);
 
-      this.ws.onclose = (event) => {
-        console.log('🔴 WebSocket disconnected', event.code, event.reason);
-        this.stopPingInterval();
-        this.emit('disconnected', {code: event.code, reason: event.reason});
+      // "Software caused connection abort" is normal when app backgrounds
+      if (errorMsg.includes('Software caused connection abort')) {
+        console.log('📱 WebSocket closed by OS (app backgrounded) - this is normal');
+        return; // Don't emit error, onclose will handle reconnection
+      }
 
-        if (!this.isIntentionalClose) {
-          this.reconnect();
-        }
-      };
+      // Only log/emit actual errors
+      console.error('❌ WebSocket error:', error);
+      this.emit('error', error);
+    };
+
+    this.ws.onclose = (event) => {
+      console.log('🔴 WebSocket disconnected', event.code, event.reason);
+      this.stopPingInterval();
+      this.emit('disconnected', {code: event.code, reason: event.reason});
+
+      // ✅ FIX: Don't try to reconnect if app is backgrounded
+      if (!this.isIntentionalClose && typeof document !== 'undefined') {
+        // Only reconnect if we're in foreground (document is visible)
+        this.reconnect();
+      } else {
+        console.log('📱 Skipping reconnect (app backgrounded or intentional close)');
+      }
+    };
 
     } catch (error) {
       console.error('❌ Error connecting to WebSocket:', error);

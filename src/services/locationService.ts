@@ -304,7 +304,7 @@ export class LocationService {
       const { status } = await Location.getBackgroundPermissionsAsync();
       if (status !== 'granted') {
         // Try requesting it again
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.requestBackgroundPermissionsAsync();
         if (status != 'granted') {
           console.log('⚠️ Background location permission not granted');
           return;
@@ -315,19 +315,36 @@ export class LocationService {
       await AsyncStorage.setItem('currentUserId', userId);
       await AsyncStorage.setItem('isLocationSharing', isLocationSharing.toString());
 
-      await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: BACKGROUND_TIME_INTERVAL, // 15 seconds
-        distanceInterval: BACKGROUND_DISTANCE_INTERVAL, // 50 meters
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'LocationLink',
-          notificationBody: 'Sharing your location with friends',
-          notificationColor: '#4CAF50',
-        },
-      });
+      try {
+        // Try with foreground service (shows notification)
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: BACKGROUND_TIME_INTERVAL,
+          distanceInterval: BACKGROUND_DISTANCE_INTERVAL,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'LocationLink',
+            notificationBody: 'Sharing your location with friends',
+            notificationColor: '#4CAF50',
+          },
+        });
 
-      console.log('✅ Background tracking started');
+        console.log('✅ Background tracking started (with notification)');
+
+      } catch (foregroundError) {
+        console.log('⚠️ Foreground service failed, trying headless mode...');
+        console.log('   Error:', foregroundError);
+
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: BACKGROUND_TIME_INTERVAL,
+          distanceInterval: BACKGROUND_DISTANCE_INTERVAL,
+          showsBackgroundLocationIndicator: false,
+        });
+
+        console.log('✅ Background tracking started (headless mode)');
+      }
+
     } catch (error) {
       console.error('❌ Error starting background tracking:', error);
     }
