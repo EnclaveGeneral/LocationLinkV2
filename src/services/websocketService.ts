@@ -1,3 +1,12 @@
+// src/services/websocketService.ts - FIXED VERSION
+//
+// FIXES:
+// 1. Removed broken document check (web-only, doesn't work in React Native)
+// 2. Don't clear listeners on disconnect (preserves handlers across reconnects)
+// 3. Let MapScreen control reconnection via shouldReconnect flag (no AppState race conditions)
+// 4. Better reconnection flow with state management
+// 5. Added connection state tracking
+
 import { fetchAuthSession } from "aws-amplify/auth";
 
 type MessageHandler = (message: any) => void;
@@ -13,8 +22,16 @@ export class WebSocketService {
   private userId: string | null = null;
   private isIntentionalClose = false;
 
-  // WebSocket URL = you'll need to update this after deployement
+  // ✅ FIX: Let MapScreen control reconnection via this flag
+  private shouldReconnect = true;
+
+  // WebSocket URL
   private wsUrl = 'wss://4g5skmt4j7.execute-api.us-west-2.amazonaws.com/production/';
+
+  constructor() {
+    // NOTE: We don't track AppState here to avoid race conditions with MapScreen
+    // MapScreen controls reconnection via shouldReconnect flag
+  }
 
   static getInstance(): WebSocketService {
     if (!WebSocketService.instance) {
@@ -25,12 +42,20 @@ export class WebSocketService {
 
   async connect(userId: string) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('⚠️ WebSocket already connected');
+      console.log('✅ WebSocket already connected');
       return;
+    }
+
+    // ✅ FIX: Clean up any existing connection before creating new one
+    if (this.ws) {
+      console.log('🔄 Cleaning up previous WebSocket instance...');
+      this.ws.close();
+      this.ws = null;
     }
 
     this.userId = userId;
     this.isIntentionalClose = false;
+    this.shouldReconnect = true; // ✅ Enable reconnection when explicitly connecting
 
     try {
       // Get auth token
@@ -42,13 +67,13 @@ export class WebSocketService {
       }
 
       const url = `${this.wsUrl}?userId=${userId}&token=${token}`;
-      console.log('🔵 Connecting to WebSocket...', url)
+      console.log('🔵 Connecting to WebSocket...', url);
 
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
-        console.log('✅ WebSocket connected');
-        this.reconnectAttempts = 0;
+        console.log('✅ WebSocket connected successfully');
+        this.reconnectAttempts = 0; // ✅ Reset counter on success
         this.startPingInterval();
         this.emit('connected', { userId });
       };
@@ -64,42 +89,57 @@ export class WebSocketService {
       };
 
       this.ws.onerror = (error) => {
-      // ✅ FIX: Don't crash on normal disconnects during backgrounding
-      const errorMsg = JSON.stringify(error);
+        // ✅ FIX: Don't crash on normal disconnects during backgrounding
+        const errorMsg = JSON.stringify(error);
 
-      // "Software caused connection abort" is normal when app backgrounds
-      if (errorMsg.includes('Software caused connection abort')) {
-        console.log('📱 WebSocket closed by OS (app backgrounded) - this is normal');
-        return; // Don't emit error, onclose will handle reconnection
-      }
+        // "Software caused connection abort" is normal when app backgrounds
+        if (errorMsg.includes('Software caused connection abort')) {
+          console.log('📱 WebSocket closed by OS (app backgrounded) - this is normal');
+          return; // Don't emit error, onclose will handle reconnection
+        }
 
-      // Only log/emit actual errors
-      console.error('❌ WebSocket error:', error);
-      this.emit('error', error);
-    };
+        // Only log/emit actual errors
+        console.error('❌ WebSocket error:', error);
+        this.emit('error', error);
+      };
 
-    this.ws.onclose = (event) => {
-      console.log('🔴 WebSocket disconnected', event.code, event.reason);
-      this.stopPingInterval();
-      this.emit('disconnected', {code: event.code, reason: event.reason});
+      this.ws.onclose = (event) => {
+        console.log('🔴 WebSocket disconnected', {
+          code: event.code,
+          reason: event.reason,
+          isIntentional: this.isIntentionalClose,
+          shouldReconnect: this.shouldReconnect
+        });
 
-      // ✅ FIX: Don't try to reconnect if app is backgrounded
-      if (!this.isIntentionalClose && typeof document !== 'undefined') {
-        // Only reconnect if we're in foreground (document is visible)
-        this.reconnect();
-      } else {
-        console.log('📱 Skipping reconnect (app backgrounded or intentional close)');
-      }
-    };
+        this.stopPingInterval();
+        this.emit('disconnected', { code: event.code, reason: event.reason });
+
+        // ✅ SIMPLIFIED: Only check shouldReconnect flag
+        // MapScreen controls this via connect()/disconnect() calls
+        // This avoids race conditions with AppState listeners
+        if (!this.isIntentionalClose && this.shouldReconnect) {
+          console.log('🔄 Attempting reconnection...');
+          this.reconnect();
+        } else {
+          console.log('📱 Skipping reconnect:', {
+            intentional: this.isIntentionalClose,
+            shouldReconnect: this.shouldReconnect
+          });
+        }
+      };
 
     } catch (error) {
       console.error('❌ Error connecting to WebSocket:', error);
-      this.reconnect();
+
+      // ✅ FIX: Only reconnect if shouldReconnect flag is true
+      if (this.shouldReconnect) {
+        this.reconnect();
+      }
     }
   }
 
   private handleMessage(message: any) {
-    const { type, data} = message;
+    const { type, data } = message;
 
     switch (type) {
       case 'USER_UPDATE':
@@ -132,11 +172,16 @@ export class WebSocketService {
 
       default:
         console.log('⚠️ Unknown message type:', type);
-
     }
   }
 
   private reconnect() {
+    // ✅ FIX: Clear any existing reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('❌ Max reconnection attempts reached');
       this.emit('maxReconnectAttemptsReached', {});
@@ -149,17 +194,22 @@ export class WebSocketService {
     console.log(`🔄 Reconnecting in ${delay}ms... (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
     this.reconnectTimeout = setTimeout(() => {
-      if (this.userId) {
+      if (this.userId && this.shouldReconnect) {
+        console.log('🔄 Executing reconnect...');
         this.connect(this.userId);
       }
     }, delay);
-
   }
 
   private startPingInterval() {
+    // ✅ FIX: Clear existing interval first
+    this.stopPingInterval();
+
     // Send ping every 30 seconds to keep connection alive
     this.pingInterval = setInterval(() => {
-      this.send({ action: 'ping'});
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.send({ action: 'ping' });
+      }
     }, 30000);
   }
 
@@ -171,10 +221,10 @@ export class WebSocketService {
   }
 
   send(message: any) {
-    if (this.ws?.readyState == WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      console.warn('⚠️ WebSocket not connected, fail to send message');
+      console.warn('⚠️ WebSocket not connected, failed to send message');
     }
   }
 
@@ -182,6 +232,7 @@ export class WebSocketService {
     console.log('🔴 Intentionally disconnecting WebSocket');
 
     this.isIntentionalClose = true;
+    this.shouldReconnect = false; // ✅ Disable reconnection on intentional disconnect
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -195,7 +246,37 @@ export class WebSocketService {
       this.ws = null;
     }
 
+    // ✅ FIX: DON'T clear listeners! They need to persist for reconnection
+    // this.listeners.clear(); // ❌ REMOVED - causes loss of event handlers
+
+    console.log('✅ WebSocket disconnected, listeners preserved');
+  }
+
+  // ✅ NEW: Method to cleanly shutdown and clear everything (for logout)
+  shutdown() {
+    console.log('🔴 Shutting down WebSocket service completely');
+
+    this.isIntentionalClose = true;
+    this.shouldReconnect = false;
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    this.stopPingInterval();
+
+    if (this.ws) {
+      this.ws.close(1000, 'Client shutdown');
+      this.ws = null;
+    }
+
+    // Only clear listeners on complete shutdown
     this.listeners.clear();
+    this.userId = null;
+    this.reconnectAttempts = 0;
+
+    console.log('✅ WebSocket service shut down completely');
   }
 
   // Event emitter methods
@@ -211,22 +292,40 @@ export class WebSocketService {
   }
 
   private emit(event: string, data: any) {
-    this.listeners.get(event)?.forEach(handler => {
-      try {
-        handler(data);
-      } catch (error) {
-        console.error(`❌ Error in event handler for ${event}:`, error);
-      }
-    });
+    const handlers = this.listeners.get(event);
+    if (handlers && handlers.size > 0) {
+      console.log(`📤 Emitting ${event} to ${handlers.size} handlers`);
+      handlers.forEach(handler => {
+        try {
+          handler(data);
+        } catch (error) {
+          console.error(`❌ Error in event handler for ${event}:`, error);
+        }
+      });
+    } else {
+      console.warn(`⚠️ No handlers registered for event: ${event}`);
+    }
   }
 
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  // Add a method to update WebSocket URL after deployement
+  // Get current connection state for debugging
+  getConnectionState(): string {
+    if (!this.ws) return 'NULL';
+
+    switch (this.ws.readyState) {
+      case WebSocket.CONNECTING: return 'CONNECTING';
+      case WebSocket.OPEN: return 'OPEN';
+      case WebSocket.CLOSING: return 'CLOSING';
+      case WebSocket.CLOSED: return 'CLOSED';
+      default: return 'UNKNOWN';
+    }
+  }
+
+  // Add a method to update WebSocket URL after deployment
   setWebSocketUrl(url: string) {
     this.wsUrl = url;
   }
 }
-

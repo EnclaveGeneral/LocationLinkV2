@@ -521,6 +521,289 @@
             "sortKeyFieldNames": []
           }
         },
+        "ChatConversation": {
+          "name": "ChatConversation",
+          "fields": {
+            "conversationId": {
+              "name": "conversationId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "participant1Id": {
+              "name": "participant1Id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "participant2Id": {
+              "name": "participant2Id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "lastMessageText": {
+              "name": "lastMessageText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "lastMessageTimestamp": {
+              "name": "lastMessageTimestamp",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "lastMessageSenderId": {
+              "name": "lastMessageSenderId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "unreadCountUser1": {
+              "name": "unreadCountUser1",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "unreadCountUser2": {
+              "name": "unreadCountUser2",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ChatConversations",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "conversationId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "chatConversationsByParticipant1Id",
+                "queryField": "listChatConversationByParticipant1Id",
+                "fields": [
+                  "participant1Id"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "chatConversationsByParticipant2Id",
+                "queryField": "listChatConversationByParticipant2Id",
+                "fields": [
+                  "participant2Id"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "participant1Id",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "provider": "userPools",
+                    "ownerField": "participant2Id",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "conversationId",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ChatMessage": {
+          "name": "ChatMessage",
+          "fields": {
+            "messageId": {
+              "name": "messageId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "conversationId": {
+              "name": "conversationId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "senderId": {
+              "name": "senderId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "receiverId": {
+              "name": "receiverId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "content": {
+              "name": "content",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "timestamp": {
+              "name": "timestamp",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "ChatMessageStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ChatMessages",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "messageId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "chatMessagesByConversationId",
+                "queryField": "listChatMessageByConversationId",
+                "fields": [
+                  "conversationId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "senderId",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "provider": "userPools",
+                    "ownerField": "receiverId",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "messageId",
+            "sortKeyFieldNames": []
+          }
+        },
         "WebSocketConnection": {
           "name": "WebSocketConnection",
           "fields": {
@@ -624,6 +907,14 @@
             "PENDING",
             "ACCEPTED",
             "REJECTED"
+          ]
+        },
+        "ChatMessageStatus": {
+          "name": "ChatMessageStatus",
+          "values": [
+            "sent",
+            "delivered",
+            "read"
           ]
         }
       },

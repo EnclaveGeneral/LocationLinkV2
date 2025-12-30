@@ -36,6 +36,8 @@ const userTable = backend.data.resources.tables['User'];
 const friendTable = backend.data.resources.tables['Friend'];
 const friendRequestTable = backend.data.resources.tables['FriendRequest'];
 const connectionsTable = backend.data.resources.tables['WebSocketConnection'];
+const chatMessageTable = backend.data.resources.tables['ChatMessage'];
+const chatConversationTable = backend.data.resources.tables['ChatConversation'];
 
 // Enable DynamoDB streams to all tables so AppSync can catch them!
 userTable.tableStreamArn;
@@ -47,6 +49,9 @@ const userTableName = userTable.tableName;
 const friendTableName = friendTable.tableName;
 const friendRequestTableName = friendRequestTable.tableName;
 const connectionsTableName = connectionsTable.tableName;
+const chatMessageTableName = chatMessageTable.tableName;
+const chatConversationTableName = chatConversationTable.tableName;
+
 
 // Create WebSocket API
 const webSocketApi = new CfnApi(stack, 'WebSocketApi', {
@@ -139,6 +144,11 @@ backend.websocketMessageFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connec
 backend.websocketBroadcastFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_TABLE_NAME', friendTableName!);
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_REQUEST_TABLE_NAME', friendRequestTableName!);
+
+// For all chat functionalities
+backend.websocketMessageFunction.addEnvironment('CHAT_MESSAGE_TABLE_NAME', chatMessageTableName!);
+backend.websocketMessageFunction.addEnvironment('CHAT_CONVERSATION_TABLE_NAME', chatConversationTableName!);
+
 backend.websocketBroadcastFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketBroadcastFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoint);
 
@@ -161,6 +171,10 @@ backend.websocketBroadcastFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoi
       resources: [
         connectionsTable.tableArn,
         `${connectionsTable.tableArn}/*`,
+        chatConversationTable.tableArn,
+        `${chatConversationTable.tableArn}/*`,
+        chatMessageTable.tableArn,
+        `${chatMessageTable.tableArn}/*`,
       ],
     })
   );
@@ -190,6 +204,15 @@ backend.websocketBroadcastFunction.resources.lambda.addToRolePolicy(
 
 // Grant permissions to post to WebSocket connections
 backend.websocketBroadcastFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ['execute-api:ManageConnections'],
+    resources: [`arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`],
+  })
+);
+
+// Grant our chat message to be broadcasted through WebSocket Connections
+backend.websocketMessageFunction.resources.lambda.addToRolePolicy(
   new PolicyStatement({
     effect: Effect.ALLOW,
     actions: ['execute-api:ManageConnections'],

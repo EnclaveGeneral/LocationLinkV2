@@ -70,6 +70,49 @@ const schema = a.schema({
       index('receiverId'),
     ]),
 
+  ChatConversation: a
+    .model({
+      conversationId: a.id().required(),
+      participant1Id: a.id().required(),
+      participant2Id: a.id().required(),
+
+      lastMessageText: a.string(),
+      lastMessageTimestamp: a.datetime(),
+      lastMessageSenderId: a.id(),
+
+      unreadCountUser1: a.integer(),
+      unreadCountUser2: a.integer(),
+    })
+    .authorization((allow) => [
+      allow.ownerDefinedIn('participant1Id'),
+      allow.ownerDefinedIn('participant2Id'),
+    ])
+    .identifier(['conversationId'])
+    .secondaryIndexes((index) => [
+      index('participant1Id'),
+      index('participant2Id'),
+    ]),
+
+  ChatMessage: a
+    .model({
+      messageId: a.id().required(),
+      conversationId: a.id().required(),
+      senderId: a.id().required(),
+      receiverId: a.id().required(),
+      content: a.string().required(),
+      timestamp: a.datetime().required(),
+      status: a.enum(['sent', 'delivered', 'read']),
+    })
+    .authorization((allow) => [
+      allow.ownerDefinedIn('senderId'),
+      allow.ownerDefinedIn('receiverId'),
+    ])
+    .identifier(['messageId'])
+    .secondaryIndexes((index) => [
+      index('conversationId'),  // Only the one we actually need
+    ]),
+
+
   WebSocketConnection: a
     .model({
       connectionId: a.string().required(),
