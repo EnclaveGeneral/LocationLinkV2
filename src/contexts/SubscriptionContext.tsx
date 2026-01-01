@@ -13,6 +13,7 @@ import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { getUrl } from 'aws-amplify/storage';
 import type { Schema } from '../../amplify/data/resource';
+import { chatService } from '@/services/chatService';
 
 type User = Schema['User']['type'];
 type FriendRequest = Schema['FriendRequest']['type'];
@@ -48,6 +49,8 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const initialLoadComplete = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
@@ -76,6 +79,15 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       result.status === 'fulfilled' ? result.value : validUsers[index]
     );
   }, []);
+
+  // ==================
+  // Load conversations for a particular user
+  // ==================
+  const loadConversations = async () => {
+    const convos = await chatService.getUserConversations(userId);
+    setConversations(convos);
+
+  }
 
   // ============================================
   // UPDATE FRIENDS STATE (single source of truth)

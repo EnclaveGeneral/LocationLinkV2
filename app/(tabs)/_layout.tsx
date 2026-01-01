@@ -40,7 +40,7 @@ const TabIcon = ({
   size: number,
   focused: boolean,
   badgeCount?: number
-  type?: 'friends' | 'requests'
+  type?: 'friends' | 'requests' | 'chats'
 }) => {
 
   const getBadgeStyle = () => {
@@ -150,6 +150,39 @@ function TabsContent() {
               color={color}
               size={iconSize || size}
               focused={focused}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="chats"
+        options={{
+          headerShown: true,
+          title: 'Chats',
+          header: () => (
+            <LinearGradient
+              colors={['#1858AC', '#A910F5', '#542AD2']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <View style={styles.headerContainer}>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>My Chats</Text>
+              </View>
+            </LinearGradient>
+          ),
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              source={
+                focused
+                  ? require('../../assets/chat_active_icon.png')
+                  : require('../../assets/chat_icon.png')
+              }
+              color={color}
+              size={iconSize || size}
+              focused={focused}
+              type='chats'
+              badgeCount={0}  // TODO: Add unread message count
             />
           ),
         }}

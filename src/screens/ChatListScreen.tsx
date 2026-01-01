@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { chatService } from '../services/chatService';
 import { authService } from '../services/authService';
+import { WebSocketService } from '@/services/websocketService';
 import CustomModal from '@/components/modal';
 
 const { width } = Dimensions.get('screen');

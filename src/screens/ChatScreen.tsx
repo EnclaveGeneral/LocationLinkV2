@@ -1,5 +1,4 @@
-// This screen component displays the chat conversation between two users
-
+// src/screens/ChatScreen.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -15,11 +14,11 @@ import {
 } from 'react-native';
 import { chatService } from '../services/chatService';
 import { authService } from '../services/authService';
+import { WebSocketService } from '../services/websocketService';
 import CustomModal from '@/components/modal';
 
 const { width } = Dimensions.get('screen');
 
-// Define the structure of a single message
 type Message = {
   messageId: string;
   conversationId: string;
@@ -28,76 +27,189 @@ type Message = {
   content: string;
   timestamp: string;
   status?: 'sent' | 'delivered' | 'read' | null;
-}
+};
 
 export default function ChatScreen({ route }: any) {
   const { conversationId, otherUserId } = route.params;
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+
   const [modalVisible, setModalVisible] = useState(false);
   const [modalContent, setModalContent] = useState({
     type: 'error' as 'error' | 'success' | 'confirm',
     title: '',
-    message: ''
+    message: '',
   });
-  const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   const flatListRef = useRef<FlatList>(null);
+  const wsServiceRef = useRef<WebSocketService | null>(null);
 
   useEffect(() => {
     initialize();
+
+    // Cleanup when leaving screen
+    return () => {
+      cleanup();
+    };
   }, []);
 
-  // Initialize this specific chat conversation
   const initialize = async () => {
     try {
-      // Step 1: Get current user
       const user = await authService.getCurrentUser();
       if (user) {
         setCurrentUserId(user.userId);
-
-        // Step 2: Load messages
         await loadMessages(user.userId);
+        setupWebSocket();
       }
-    } catch (error) {
+    } catch (error: any) {
+      setModalContent({
+        type: 'error',
+        title: 'Error Initializing Chat',
+        message: error.message || 'An unexpected error occurred during initialization.',
+      })
+      setModalVisible(true);
       console.error('Error initializing:', error);
     } finally {
       setLoading(false);
     }
+  };
 
-  }
+  const setupWebSocket = () => {
+    const wsService = WebSocketService.getInstance();
+    wsServiceRef.current = wsService;
 
-  // Load all prior messages for this conversation
+    // Listen for chat events
+    wsService.on('newMessage', handleNewMessage);
+    wsService.on('messageSent', handleMessageSent);
+
+    console.log('✅ WebSocket listeners registered for chat');
+  };
+
+  const cleanup = () => {
+    console.log('🧹 Cleaning up ChatScreen...');
+
+    if (wsServiceRef.current) {
+      wsServiceRef.current.off('newMessage', handleNewMessage);
+      wsServiceRef.current.off('messageSent', handleMessageSent);
+      console.log('✅ WebSocket listeners removed');
+    }
+  };
+
+  const handleNewMessage = (data: any) => {
+    // Only process messages for THIS conversation
+    if (data.conversationId !== conversationId) {
+      console.log('⏭️ Message for different conversation, ignoring');
+      return;
+    }
+
+    console.log('💬 New message received for this conversation:', data);
+
+    const newMessage: Message = {
+      messageId: data.messageId,
+      conversationId: data.conversationId,
+      senderId: data.senderId,
+      receiverId: currentUserId,
+      content: data.content,
+      timestamp: data.timestamp,
+      status: 'delivered',
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+
+    // Auto-scroll to bottom
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
+
+  const handleMessageSent = (data: any) => {
+    // Only process confirmations for THIS conversation
+    if (data.conversationId !== conversationId) {
+      console.log('⏭️ Confirmation for different conversation, ignoring');
+      return;
+    }
+
+    console.log('✅ Message sent confirmation:', data.messageId);
+
+    // Update temp message with real ID and status
+    setMessages(prev => prev.map(msg =>
+      msg.messageId.startsWith('temp-') && msg.content === data.content
+        ? { ...msg, messageId: data.messageId, status: 'sent' }
+        : msg
+    ));
+  };
+
   const loadMessages = async (userId: string) => {
     try {
       const data = await chatService.getConversationMessages(conversationId);
       setMessages(data);
 
-      // Scroll to bottom after loading
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
 
-      // Mark conversation as read
-      // TODO: We need the conversation object for this
-      // We'll add this later
-
-    } catch (error) {
+    } catch (error: any) {
+      setModalContent({
+        type: 'error',
+        title: 'Error loading messages',
+        message: error.message || 'An unexpected error occurred while loading messages.',
+      })
+      setModalVisible(true);
       console.error('Error loading messages:', error);
     }
   };
 
-  // Send a new message, activate on button press
   const sendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !wsServiceRef.current) return;
 
+    const messageContent = inputText.trim();
+    const tempId = `temp-${Date.now()}`;
+    const timestamp = new Date().toISOString();
 
+    // Optimistic UI - show message immediately
+    const optimisticMessage: Message = {
+      messageId: tempId,
+      conversationId,
+      senderId: currentUserId,
+      receiverId: otherUserId,
+      content: messageContent,
+      timestamp,
+      status: 'sent',
+    };
 
-    console.log('Sending message:', inputText);
+    setMessages(prev => [...prev, optimisticMessage]);
     setInputText('');
-  }
+
+    // Auto-scroll
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+
+    // Send via WebSocket
+    try {
+      chatService.sendMessage(
+        wsServiceRef.current as any,
+        conversationId,
+        currentUserId,
+        otherUserId,
+        messageContent
+      );
+
+      console.log('📤 Message sent via WebSocket');
+    } catch (error: any) {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.messageId !== tempId));
+      console.error('Error sending message:', error);
+      setModalContent({
+        type: 'error',
+        title: 'Error sending message',
+        message: error.message || 'An unexpected error occurred while sending your message.',
+      });
+    }
+  };
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMine = item.senderId === currentUserId;
@@ -111,7 +223,7 @@ export default function ChatScreen({ route }: any) {
           styles.messageText,
           isMine && styles.myMessageText
         ]}>
-          {item.content}  {/* ✅ Using 'content' field */}
+          {item.content}
         </Text>
         <Text style={[
           styles.timestamp,
@@ -130,17 +242,16 @@ export default function ChatScreen({ route }: any) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#9420ceff" />
-        <Text style={{ marginTop: 10, color: '#666' }}>Loading messages...</Text>
+        <Text style={styles.loadingText}>Loading messages...</Text>
       </View>
     );
   }
 
-  // Render UI components
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={width * 0.225}
     >
       <FlatList
         ref={flatListRef}
@@ -150,7 +261,7 @@ export default function ChatScreen({ route }: any) {
         contentContainerStyle={styles.messageList}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No messages yet. Say hi! 👋</Text>
+            <Text style={styles.emptyText}>No messages yet. Time To Start Chatting! 👋</Text>
           </View>
         }
       />
@@ -161,17 +272,29 @@ export default function ChatScreen({ route }: any) {
           value={inputText}
           onChangeText={setInputText}
           placeholder="Type a message..."
+          placeholderTextColor="#999"
           multiline
           maxLength={500}
         />
         <TouchableOpacity
-          style={styles.sendButton}
+          style={[
+            styles.sendButton,
+            !inputText.trim() && styles.sendButtonDisabled
+          ]}
           onPress={sendMessage}
           disabled={!inputText.trim()}
         >
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+
+      <CustomModal
+        visible={modalVisible}
+        title={modalContent.title}
+        message={modalContent.message}
+        type={modalContent.type}
+        onClose={() => setModalVisible(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -186,8 +309,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: width * 0.025,
+    color: '#666',
+    fontSize: width * 0.035,
+  },
   messageList: {
-    padding: 15,
+    padding: width * 0.0375,
     flexGrow: 1,
   },
   emptyContainer: {
@@ -203,9 +331,9 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '75%',
-    padding: 12,
-    borderRadius: 20,
-    marginBottom: 10,
+    padding: width * 0.03,
+    borderRadius: width * 0.05,
+    marginBottom: width * 0.025,
   },
   myMessage: {
     alignSelf: 'flex-end',
@@ -216,43 +344,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#e5e5ea',
   },
   messageText: {
-    fontSize: 16,
+    fontSize: width * 0.04,
     color: '#000',
   },
   myMessageText: {
     color: '#fff',
   },
   timestamp: {
-    fontSize: 11,
+    fontSize: width * 0.0275,
     color: '#666',
-    marginTop: 4,
+    marginTop: width * 0.01,
   },
   myTimestamp: {
     color: '#e0d0ff',
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
+    padding: width * 0.025,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
+    borderTopWidth: width * 0.002,
     borderTopColor: '#ddd',
   },
   input: {
     flex: 1,
-    borderWidth: 1,
+    borderWidth: width * 0.002,
     borderColor: '#9420ceff',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    maxHeight: 100,
+    borderRadius: width * 0.05,
+    paddingHorizontal: width * 0.0375,
+    paddingVertical: width * 0.02,
+    maxHeight: width * 0.25,
     fontSize: width * 0.035,
+    color: '#000',
   },
   sendButton: {
-    marginLeft: 10,
+    marginLeft: width * 0.025,
     backgroundColor: '#9420ceff',
-    borderRadius: 20,
-    paddingHorizontal: 20,
+    borderRadius: width * 0.05,
+    paddingHorizontal: width * 0.05,
     justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#ccc',
   },
   sendButtonText: {
     color: '#fff',

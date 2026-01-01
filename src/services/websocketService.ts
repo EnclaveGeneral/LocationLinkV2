@@ -170,6 +170,14 @@ export class WebSocketService {
         this.emit('friendRequestDeleted', data);
         break;
 
+      case 'NEW_MESSAGE':
+        this.emit('newMessage', data);
+        break;
+
+      case 'MESSAGE_SENT':
+        this.emit('messageSent', data);
+        break;
+
       default:
         console.log('⚠️ Unknown message type:', type);
     }
