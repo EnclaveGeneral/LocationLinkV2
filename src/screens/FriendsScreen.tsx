@@ -13,10 +13,13 @@ import {
 } from 'react-native';
 import { friendService } from '../services/friendService';
 import { authService } from '../services/authService';
+import { chatService } from '../services/chatService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/modal';
+import Entypo from '@expo/vector-icons/Entypo';
+import { router } from 'expo-router';
 
 const { width } = Dimensions.get('screen');
 
@@ -43,6 +46,30 @@ export default function FriendsScreen() {
 
   const setModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error' ) => {
     setModalType({title, message, type});
+  }
+
+  const openChat = async (friend: any) => {
+    const user = await authService.getCurrentUser();
+    if (!user) {
+      setModalType({
+        title: 'Connection Error',
+        message: 'User cannot be authenticated',
+        type: 'error'
+      })
+      setModalVisible(true);
+      return;
+    }
+
+    const conversation = await chatService.getOrCreateConversation(user.userId, friend.id);
+    console.log('💬 Opening chat with conversationId:', conversation?.conversationId);
+
+    // Now that we are gaurantee to have created a conversation or loaded into an existing one, we we
+    // navigate to the screen
+    router.push({
+      pathname: `/chats/${conversation?.conversationId}`,
+      params: { otherUserId: friend.id}
+    })
+
   }
 
   const removeFriend = async (friend: any) => {
@@ -125,20 +152,31 @@ export default function FriendsScreen() {
             </View>
           </View>
         </View>
-        <TouchableOpacity
-          onPress={() => {
-            setSelectedFriend(item);
-            setModal('Friend Removal Confirmation', `Remove ${item.username} from your friend list?`, 'confirm');
-            setModalVisible(true);
-          }}
-          disabled={isAnyRemoving}
-        >
-          {isRemoving ? (
-            <ActivityIndicator size="small" color="#ff5252" />
-          ) : (
-            <Ionicons name="close-circle" size={24} color="#ff5252" />
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
+          <TouchableOpacity
+            onPress={() => {
+              openChat(item);
+            }}
+            style={{ marginRight: width * 0.045 }}
+          >
+            <Entypo name='new-message' size={width * 0.065} color="#A910F5" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedFriend(item);
+              setModal('Friend Removal Confirmation', `Remove ${item.username} from your friend list?`, 'confirm');
+              setModalVisible(true);
+            }}
+            disabled={isAnyRemoving}
+          >
+            {isRemoving ? (
+              <ActivityIndicator size="small" color="#f80606ff" />
+            ) : (
+              <Ionicons name="close-circle" size={width * 0.075} color="#f80606ff" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
