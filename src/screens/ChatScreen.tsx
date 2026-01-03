@@ -186,6 +186,8 @@ export default function ChatScreen({ route }: any) {
       const data = await chatService.getConversationMessages(conversationId);
       setMessages(data);
 
+      console.log(data);
+
       // Mark conversation as read
       if (conversation) {
         await chatService.markConversationAsRead(conversationId, userId, conversation);
