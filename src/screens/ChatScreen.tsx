@@ -65,6 +65,10 @@ export default function ChatScreen({ route }: any) {
   const flatListRef = useRef<FlatList>(null);
   const wsServiceRef = useRef<WebSocketService | null>(null);
 
+  // Track pending messages for better optimistic UI
+  // tempId -> content
+  const pendingMessageRef = useRef<Map<String, String>>(new Map());
+
   // ============================================
   // DYNAMIC HEADER SETUP
   // ============================================
@@ -184,9 +188,17 @@ export default function ChatScreen({ route }: any) {
   const loadMessages = async (userId: string) => {
     try {
       const data = await chatService.getConversationMessages(conversationId);
-      setMessages(data);
 
-      console.log(data);
+      console.log('📥 Messages from database:', data.length);
+
+      // ✅ Double-check for valid messages (paranoid filtering)
+      const validMessages = data
+        .filter(msg => msg !== null && msg !== undefined)
+        .filter(msg => msg.messageId && msg.content && msg.timestamp);
+
+      console.log(`✅ Valid messages: ${validMessages.length}`);
+
+      setMessages(validMessages);
 
       // Mark conversation as read
       if (conversation) {
@@ -209,6 +221,7 @@ export default function ChatScreen({ route }: any) {
     }
   };
 
+
   // ============================================
   // WEBSOCKET SETUP
   // ============================================
@@ -217,16 +230,20 @@ export default function ChatScreen({ route }: any) {
     wsServiceRef.current = wsService;
 
     // Listen for chat events
-    wsService.on('newMessage', handleNewMessage);
-    wsService.on('messageSent', handleMessageSent);
+    wsService.on('new_message', handleNewMessage);
+    wsService.on('message_sent', handleMessageSent);
+    wsService.on('message_error', handleMessageError);
+    wsService.on('typing_indicator', handleTypingIndicator);
 
     console.log('✅ WebSocket listeners registered for chat');
   };
 
   const cleanup = () => {
     if (wsServiceRef.current) {
-      wsServiceRef.current.off('newMessage', handleNewMessage);
-      wsServiceRef.current.off('messageSent', handleMessageSent);
+      wsServiceRef.current.off('new_message', handleNewMessage);
+      wsServiceRef.current.off('message_sent', handleMessageSent);
+      wsServiceRef.current.off('message_error', handleMessageError);
+      wsServiceRef.current.off('typing_indicator', handleTypingIndicator);
       console.log('✅ WebSocket listeners removed');
     }
   };
@@ -235,11 +252,17 @@ export default function ChatScreen({ route }: any) {
   // WEBSOCKET EVENT HANDLERS
   // ============================================
   const handleNewMessage = (data: any) => {
-    console.log('📨 Raw WebSocket message received:', data);
+    console.log('📨 New message received via WebSocket:', data);
 
     // Only process messages for THIS conversation
     if (data.conversationId !== conversationId) {
       console.log('⏭️ Message for different conversation, ignoring');
+      return;
+    }
+
+    // Check if message is from the other person (not our own echo)
+    if (data.senderId === currentUserId) {
+      console.log('⏭️ Message is from self, already in UI');
       return;
     }
 
@@ -255,11 +278,14 @@ export default function ChatScreen({ route }: any) {
       status: 'delivered',
     };
 
+
     setMessages(prev => {
       // Prevent duplicates
       if (prev.some(msg => msg.messageId === newMessage.messageId)) {
+        console.log('⏭️ Message already exists, skipping');
         return prev;
       }
+      console.log('✅ Adding new message to UI');
       return [...prev, newMessage];
     });
 
@@ -277,13 +303,64 @@ export default function ChatScreen({ route }: any) {
       return;
     }
 
-    // Update temp message with real ID and status
-    setMessages(prev => prev.map(msg =>
-      msg.messageId.startsWith('temp-') && msg.content === data.content
-        ? { ...msg, messageId: data.messageId, status: 'sent' }
-        : msg
-    ));
+    // Find the temp message and update it with real ID
+    setMessages(prev => {
+      const tempId = Array.from(pendingMessageRef.current.entries())
+        .find(([_, content]) => content === data.content)?.[0];
+
+      if (!tempId) {
+        console.log('⚠️ No matching temp message found for confirmation');
+        return prev;
+      }
+
+      // Remove from pending map
+      pendingMessageRef.current.delete(tempId);
+
+      // Update the message with real ID and status
+      return prev.map(msg =>
+        msg.messageId === tempId
+          ? { ...msg, messageId: data.messageId, status: 'sent' as const }
+          : msg
+      );
+    });
   };
+
+  const handleMessageError = (data: any) => {
+    console.error('❌ Message send error:', data);
+
+    // Remove the failed message from UI
+    if (data.originalMessage?.conversationId === conversationId) {
+      const content = data.originalMessage.messageText;
+
+      setMessages(prev => {
+        const tempId = Array.from(pendingMessageRef.current.entries())
+          .find(([_, msgContent]) => msgContent === content)?.[0];
+
+        if (tempId) {
+          pendingMessageRef.current.delete(tempId);
+          return prev.filter(msg => msg.messageId !== tempId);
+        }
+        return prev;
+      });
+
+      setModalContent({
+        type: 'error',
+        title: 'Failed to send message',
+        message: 'Your message could not be delivered. Please try again.',
+      });
+      setModalVisible(true);
+    }
+  };
+
+  const handleTypingIndicator = (data: any) => {
+    // Only show typing indicator for this conversation
+    if (data.conversationId === conversationId && data.senderId === otherUserId) {
+      console.log(`💬 ${friendUsername} is ${data.isTyping ? 'typing' : 'stopped typing'}...`);
+      // TODO: Implement typing indicator UI if desired
+    }
+  };
+
+
 
   // ============================================
   // SEND MESSAGE
@@ -294,6 +371,10 @@ export default function ChatScreen({ route }: any) {
     const messageContent = inputText.trim();
     const tempId = `temp-${Date.now()}`;
     const timestamp = new Date().toISOString();
+
+    // Track this pending message
+    pendingMessageRef.current.set(tempId, messageContent);
+
 
     // Optimistic UI - show message immediately
     const optimisticMessage: Message = {
@@ -327,7 +408,9 @@ export default function ChatScreen({ route }: any) {
       console.log('📤 Message sent via WebSocket');
     } catch (error: any) {
       // Remove optimistic message on error
+      pendingMessageRef.current.delete(tempId);
       setMessages(prev => prev.filter(msg => msg.messageId !== tempId));
+
       console.error('Error sending message:', error);
       setModalContent({
         type: 'error',

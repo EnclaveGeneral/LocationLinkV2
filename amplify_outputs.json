@@ -771,27 +771,10 @@
               "properties": {
                 "rules": [
                   {
-                    "provider": "userPools",
-                    "ownerField": "senderId",
-                    "allow": "owner",
-                    "identityClaim": "cognito:username",
+                    "allow": "private",
                     "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
-                  },
-                  {
-                    "provider": "userPools",
-                    "ownerField": "receiverId",
-                    "allow": "owner",
-                    "identityClaim": "cognito:username",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
+                      "read",
+                      "create"
                     ]
                   }
                 ]

@@ -89,7 +89,10 @@ export const chatService = {
         limit,
       });
 
-      return data.sort((a, b) => {
+      // ✅ Filter out null/undefined items BEFORE sorting
+      const validMessages = data.filter(msg => msg !== null && msg !== undefined);
+
+      return validMessages.sort((a, b) => {
         const timeA = a.timestamp;
         const timeB = b.timestamp;
         return timeA.localeCompare(timeB);
@@ -148,6 +151,7 @@ export const chatService = {
       receiverId: receiverId,
       messageText: messageText,
     });
+    console.log('➡️ Sending chat message:', { conversationId, senderId, receiverId, messageText });
   },
 
   sendTypingIndicator (

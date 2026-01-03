@@ -104,8 +104,7 @@ const schema = a.schema({
       status: a.enum(['sent', 'delivered', 'read']),
     })
     .authorization((allow) => [
-      allow.ownerDefinedIn('senderId'),
-      allow.ownerDefinedIn('receiverId'),
+      allow.authenticated().to(['read', 'create']),
     ])
     .identifier(['messageId'])
     .secondaryIndexes((index) => [

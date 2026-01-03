@@ -11,7 +11,6 @@ const apiGatewayClient = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT
 });
 
-
 export const handler = async (event: any) => {
   console.log('📨 WebSocket Message Event:', JSON.stringify(event, null, 2));
 
@@ -48,7 +47,6 @@ export const handler = async (event: any) => {
         }
 
         if (body.type === 'TYPING_INDICATOR') {
-          // Handle typing indicator (implementation omitted for brevity)
           await handleTypingIndicator(body, connectionId);
         }
         break;
@@ -74,81 +72,11 @@ export const handler = async (event: any) => {
 // Handle typing indicator based on user current input status
 async function handleTypingIndicator(message: any, connectionId: string) {
   console.log('👀 Handling typing indicator:', message);
-}
 
-// Handle chat message and send it to the correct user (receiver)
-async function handleChatMessage(message: any, connectionId: string) {
-
-  // Step 1: Store chat message in DynamoDB
-
-  // Get all parameters from chatMessage object
-  const { conversationId, senderId, receiverId, messageText } = message;
-
-  console.log('💬 Handling chat message:', { conversationId, senderId, receiverId });
+  const { conversationId, senderId, receiverId, isTyping } = message;
 
   try {
-
-    // Generate a new random chatMessageId that is unique
-    const chatMessageId = randomUUID();
-
-    // Get the current timeframe for the message stamp
-    const timestamp = new Date().toISOString();
-
-    await ddbDocClient.send(new PutCommand({
-      TableName: process.env.CHAT_MESSAGE_TABLE_NAME!,
-      Item: {
-        messageId: chatMessageId,
-        conversationId,
-        senderId,
-        receiverId,
-        messageText,
-        timestamp,
-        status: 'sent',
-      }
-    }));
-
-    console.log('✅ Chat message stored on DynamoDB:', chatMessageId);
-
-    // Step 2: Fetch the conversation object: chatConversationID
-    const conversationResponse = await ddbDocClient.send( new GetCommand({
-      TableName: process.env.CHAT_CONVERSATION_TABLE_NAME!,
-      Key: { conversationId: conversationId }
-    }));
-
-    const curConversation = conversationResponse.Item;
-
-    if (!curConversation) {
-      console.error('❌ Conversation not found:', conversationId);
-      return;  // Exit early if conversation doesn't exist
-    }
-
-    console.log('✅ Conversation fetched:', conversationId);
-
-    // Step 3: Update the conversation metadata
-    // Determine which unread counter to increment
-
-    const isReceiverParticipant1 = receiverId === curConversation.participant1Id;
-    const unreadCountField = isReceiverParticipant1 ? 'unreadCountUser1' : 'unreadCountUser2';
-
-    await ddbDocClient.send(new UpdateCommand({
-      TableName: process.env.CHAT_CONVERSATION_TABLE_NAME!,
-      Key: { conversationId: conversationId },
-      UpdateExpression: 'SET lastMessageText = :text, lastMessageTimestamp = :time, lastMessageSenderId = :sender, #unreadField = #unreadField + :inc',
-      ExpressionAttributeNames: {
-        '#unreadField': unreadCountField,
-      },
-      ExpressionAttributeValues: {
-        ':text': messageText,
-        ':time': timestamp,
-        ':sender': senderId,
-        ':inc': 1
-      }
-    }));
-
-    console.log('✅ Conversation updated');
-
-    // Step 4: Here you would typically send the message to the receiver via WebSocket
-    // Use the user connectionID to send the message directly
+    // Find receiver's connection
     const connectionsResponse = await ddbDocClient.send(new QueryCommand({
       TableName: process.env.CONNECTIONS_TABLE_NAME!,
       IndexName: 'webSocketConnectionsByUserId',
@@ -160,45 +88,151 @@ async function handleChatMessage(message: any, connectionId: string) {
 
     const receiverConnection = connectionsResponse.Items?.[0];
 
-    if (!receiverConnection) {
-      console.log('⚠️ Receiver is offline, message saved but not delivered in real-time');
-      return;  // Exit - message is saved in DB, but receiver isn't online
+    if (receiverConnection) {
+      await apiGatewayClient.send(new PostToConnectionCommand({
+        ConnectionId: receiverConnection.connectionId,
+        Data: JSON.stringify({
+          type: 'typing_indicator',
+          conversationId,
+          senderId,
+          isTyping
+        })
+      }));
+      console.log('✅ Typing indicator sent');
+    }
+  } catch (error) {
+    console.error('❌ Error sending typing indicator:', error);
+  }
+}
+
+// Handle chat message and send it to the correct user (receiver)
+async function handleChatMessage(message: any, connectionId: string) {
+
+  // Step 1: Store chat message in DynamoDB
+  const { conversationId, senderId, receiverId, messageText } = message;
+
+  console.log('💬 Handling chat message:', { conversationId, senderId, receiverId });
+
+  try {
+    // Generate a new unique messageId
+    const messageId = randomUUID();
+    const timestamp = new Date().toISOString();
+
+    // ⚠️ CRITICAL FIX: Use "content" field to match schema, not "messageText"
+    await ddbDocClient.send(new PutCommand({
+      TableName: process.env.CHAT_MESSAGE_TABLE_NAME!,
+      Item: {
+        messageId: messageId,
+        conversationId: conversationId,
+        senderId: senderId,
+        receiverId: receiverId,
+        content: messageText,  // ✅ Changed from "messageText" to "content"
+        timestamp: timestamp,
+        status: 'sent'
+      }
+    }));
+
+    console.log('✅ Chat message stored in DynamoDB:', messageId);
+
+    // Step 2: Update the conversation metadata
+    const conversationResponse = await ddbDocClient.send(new GetCommand({
+      TableName: process.env.CHAT_CONVERSATION_TABLE_NAME!,
+      Key: { conversationId: conversationId }
+    }));
+
+    const curConversation = conversationResponse.Item;
+
+    if (!curConversation) {
+      console.error('❌ Conversation not found:', conversationId);
+      return;
     }
 
-    const receiverConnectionId = receiverConnection.connectionId;
-    console.log('✅ Receiver connection found:', receiverConnectionId);
+    console.log('✅ Conversation fetched:', conversationId);
 
-    // Here you would integrate with API Gateway to send the message to receiverConnectionId
-    // This part is omitted for brevity
+    // Step 3: Update conversation with last message and increment unread count
+    const isReceiverParticipant1 = receiverId === curConversation.participant1Id;
+    const unreadCountField = isReceiverParticipant1 ? 'unreadCountUser1' : 'unreadCountUser2';
 
-    // Step 5: Directly send it!
-    await apiGatewayClient.send(new PostToConnectionCommand({
-      ConnectionId: receiverConnectionId,
-      Data: JSON.stringify({
-        type: 'new_message',
-        messageId: chatMessageId,
-        conversationId,
-        senderId,
-        content: messageText,
-        timestamp,
-      })
+    await ddbDocClient.send(new UpdateCommand({
+      TableName: process.env.CHAT_CONVERSATION_TABLE_NAME!,
+      Key: { conversationId: conversationId },
+      UpdateExpression: 'SET lastMessageText = :text, lastMessageTimestamp = :time, lastMessageSenderId = :sender, #unreadField = if_not_exists(#unreadField, :zero) + :inc',
+      ExpressionAttributeNames: {
+        '#unreadField': unreadCountField,
+      },
+      ExpressionAttributeValues: {
+        ':text': messageText,
+        ':time': timestamp,
+        ':sender': senderId,
+        ':inc': 1,
+        ':zero': 0,  // Handle null unread counts
+      }
     }));
-    console.log('✅ Message sent to receiver via WebSocket');
 
-    // Step 6: Send confirmation back to the sender
+    console.log('✅ Conversation metadata updated');
+
+    // Step 4: Try to send via WebSocket if receiver is online
+    const connectionsResponse = await ddbDocClient.send(new QueryCommand({
+      TableName: process.env.CONNECTIONS_TABLE_NAME!,
+      IndexName: 'webSocketConnectionsByUserId',
+      KeyConditionExpression: 'userId = :uid',
+      ExpressionAttributeValues: {
+        ':uid': receiverId
+      }
+    }));
+
+    const receiverConnection = connectionsResponse.Items?.[0];
+
+    if (receiverConnection) {
+      const receiverConnectionId = receiverConnection.connectionId;
+      console.log('✅ Receiver is online, sending via WebSocket:', receiverConnectionId);
+
+      // Send to receiver
+      await apiGatewayClient.send(new PostToConnectionCommand({
+        ConnectionId: receiverConnectionId,
+        Data: JSON.stringify({
+          type: 'new_message',
+          messageId: messageId,
+          conversationId: conversationId,
+          senderId: senderId,
+          content: messageText,
+          timestamp: timestamp,
+          status: 'sent',
+        })
+      }));
+      console.log('✅ Message delivered to receiver via WebSocket');
+    } else {
+      console.log('⚠️ Receiver is offline - message saved to DB for later retrieval');
+    }
+
+    // Step 5: Send confirmation back to sender
     await apiGatewayClient.send(new PostToConnectionCommand({
       ConnectionId: connectionId,
       Data: JSON.stringify({
         type: 'message_sent',
-        messageId: chatMessageId,
-        conversationId,
-        timestamp,
+        messageId: messageId,
+        conversationId: conversationId,
+        timestamp: timestamp,
+        status: 'sent',
       })
     }));
-    console.log('✅ Confirmation sent to sender via WebSocket');
-
+    console.log('✅ Confirmation sent to sender');
 
   } catch (error) {
-    console.error('❌ Error handling chat message: ', error);
+    console.error('❌ Error handling chat message:', error);
+
+    // Send error back to sender
+    try {
+      await apiGatewayClient.send(new PostToConnectionCommand({
+        ConnectionId: connectionId,
+        Data: JSON.stringify({
+          type: 'message_error',
+          error: 'Failed to send message',
+          originalMessage: message,
+        })
+      }));
+    } catch (sendError) {
+      console.error('❌ Failed to send error notification:', sendError);
+    }
   }
 }

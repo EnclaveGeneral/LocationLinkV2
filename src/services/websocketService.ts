@@ -1,36 +1,37 @@
-// src/services/websocketService.ts - FIXED VERSION
-//
-// FIXES:
-// 1. Removed broken document check (web-only, doesn't work in React Native)
-// 2. Don't clear listeners on disconnect (preserves handlers across reconnects)
-// 3. Let MapScreen control reconnection via shouldReconnect flag (no AppState race conditions)
-// 4. Better reconnection flow with state management
-// 5. Added connection state tracking
-
+// src/services/websocketService.ts - UPDATED WITH CHAT MESSAGE HANDLING
 import { fetchAuthSession } from "aws-amplify/auth";
 
-type MessageHandler = (message: any) => void;
+type MessageHandler = (data: any) => void;
+
+// Helper function to get auth token
+async function getAuthToken(): Promise<string | null> {
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    return token || null;
+  } catch (error) {
+    console.error('Error fetching auth token:', error);
+    return null;
+  }
+}
 
 export class WebSocketService {
   private static instance: WebSocketService;
   private ws: WebSocket | null = null;
+  private wsUrl: string;
+  private userId: string | null = null;
+  private listeners: Map<string, Set<MessageHandler>> = new Map();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private reconnectDelay = 3000;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
-  private listeners: Map<string, Set<MessageHandler>> = new Map();
-  private userId: string | null = null;
   private isIntentionalClose = false;
+  private shouldReconnect = false;
 
-  // ✅ FIX: Let MapScreen control reconnection via this flag
-  private shouldReconnect = true;
-
-  // WebSocket URL
-  private wsUrl = 'wss://4g5skmt4j7.execute-api.us-west-2.amazonaws.com/production/';
-
-  constructor() {
-    // NOTE: We don't track AppState here to avoid race conditions with MapScreen
-    // MapScreen controls reconnection via shouldReconnect flag
+  private constructor() {
+    // WebSocket URL Access Address
+    this.wsUrl = 'wss://4g5skmt4j7.execute-api.us-west-2.amazonaws.com/production/';
   }
 
   static getInstance(): WebSocketService {
@@ -46,21 +47,12 @@ export class WebSocketService {
       return;
     }
 
-    // ✅ FIX: Clean up any existing connection before creating new one
-    if (this.ws) {
-      console.log('🔄 Cleaning up previous WebSocket instance...');
-      this.ws.close();
-      this.ws = null;
-    }
-
     this.userId = userId;
     this.isIntentionalClose = false;
-    this.shouldReconnect = true; // ✅ Enable reconnection when explicitly connecting
+    this.shouldReconnect = true;
 
     try {
-      // Get auth token
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
+      const token = await getAuthToken();
 
       if (!token) {
         throw new Error('No auth token available');
@@ -73,7 +65,7 @@ export class WebSocketService {
 
       this.ws.onopen = () => {
         console.log('✅ WebSocket connected successfully');
-        this.reconnectAttempts = 0; // ✅ Reset counter on success
+        this.reconnectAttempts = 0;
         this.startPingInterval();
         this.emit('connected', { userId });
       };
@@ -89,16 +81,13 @@ export class WebSocketService {
       };
 
       this.ws.onerror = (error) => {
-        // ✅ FIX: Don't crash on normal disconnects during backgrounding
         const errorMsg = JSON.stringify(error);
 
-        // "Software caused connection abort" is normal when app backgrounds
         if (errorMsg.includes('Software caused connection abort')) {
           console.log('📱 WebSocket closed by OS (app backgrounded) - this is normal');
-          return; // Don't emit error, onclose will handle reconnection
+          return;
         }
 
-        // Only log/emit actual errors
         console.error('❌ WebSocket error:', error);
         this.emit('error', error);
       };
@@ -114,9 +103,6 @@ export class WebSocketService {
         this.stopPingInterval();
         this.emit('disconnected', { code: event.code, reason: event.reason });
 
-        // ✅ SIMPLIFIED: Only check shouldReconnect flag
-        // MapScreen controls this via connect()/disconnect() calls
-        // This avoids race conditions with AppState listeners
         if (!this.isIntentionalClose && this.shouldReconnect) {
           console.log('🔄 Attempting reconnection...');
           this.reconnect();
@@ -131,7 +117,6 @@ export class WebSocketService {
     } catch (error) {
       console.error('❌ Error connecting to WebSocket:', error);
 
-      // ✅ FIX: Only reconnect if shouldReconnect flag is true
       if (this.shouldReconnect) {
         this.reconnect();
       }
@@ -139,43 +124,65 @@ export class WebSocketService {
   }
 
   private handleMessage(message: any) {
-    const { type, data } = message;
+    const { type } = message;
 
     switch (type) {
+      // ============================================
+      // FRIEND & USER UPDATES
+      // ============================================
       case 'USER_UPDATE':
-        this.emit('userUpdate', data);
+        this.emit('userUpdate', message);
         break;
 
       case 'FRIEND_ADDED':
-        this.emit('friendAdded', data);
+        this.emit('friendAdded', message);
         break;
 
       case 'FRIEND_REMOVED':
-        this.emit('friendRemoved', data);
+        this.emit('friendRemoved', message);
         break;
 
       case 'FRIEND_REQUEST_SENT':
-        this.emit('friendRequestSent', data);
+        this.emit('friendRequestSent', message);
         break;
 
       case 'FRIEND_REQUEST_RECEIVED':
-        this.emit('friendRequestReceived', data);
+        this.emit('friendRequestReceived', message);
         break;
 
       case 'FRIEND_REQUEST_ACCEPTED':
-        this.emit('friendRequestAccepted', data);
+        this.emit('friendRequestAccepted', message);
         break;
 
       case 'FRIEND_REQUEST_DELETED':
-        this.emit('friendRequestDeleted', data);
+        this.emit('friendRequestDeleted', message);
         break;
 
-      case 'NEW_MESSAGE':
-        this.emit('newMessage', data);
+      // ============================================
+      // CHAT MESSAGES (NEW)
+      // ============================================
+      case 'new_message':
+        // Message received from another user
+        console.log('📨 Emitting new_message event:', message);
+        this.emit('new_message', message);
         break;
 
-      case 'MESSAGE_SENT':
-        this.emit('messageSent', data);
+      case 'message_sent':
+        // Confirmation that our message was sent
+        console.log('✅ Emitting message_sent event:', message);
+        this.emit('message_sent', message);
+        break;
+
+      case 'message_error':
+        // Error sending message
+        console.log('❌ Emitting message_error event:', message);
+        this.emit('message_error', message);
+        break;
+
+      case 'typing_indicator':
+        // Someone is typing
+        console.log('👀 Emitting typing_indicator event:', message);
+        this.emit('typing_indicator', message);
         break;
 
       default:
@@ -183,64 +190,67 @@ export class WebSocketService {
     }
   }
 
-  private reconnect() {
-    // ✅ FIX: Clear any existing reconnect timeout
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+  send(data: any) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      const message = JSON.stringify(data);
+      this.ws.send(message);
+      console.log('📤 Message sent:', data);
+    } else {
+      console.error('❌ WebSocket not connected, cannot send message');
+      throw new Error('WebSocket not connected');
     }
-
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ Max reconnection attempts reached');
-      this.emit('maxReconnectAttemptsReached', {});
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-
-    console.log(`🔄 Reconnecting in ${delay}ms... (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-    this.reconnectTimeout = setTimeout(() => {
-      if (this.userId && this.shouldReconnect) {
-        console.log('🔄 Executing reconnect...');
-        this.connect(this.userId);
-      }
-    }, delay);
   }
 
   private startPingInterval() {
-    // ✅ FIX: Clear existing interval first
     this.stopPingInterval();
 
-    // Send ping every 30 seconds to keep connection alive
     this.pingInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.send({ action: 'ping' });
       }
-    }, 30000);
+    }, 30000); // Ping every 30 seconds
+
+    console.log('✅ Ping interval started');
   }
 
   private stopPingInterval() {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+      console.log('🛑 Ping interval stopped');
     }
   }
 
-  send(message: any) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    } else {
-      console.warn('⚠️ WebSocket not connected, failed to send message');
+  private reconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('❌ Max reconnect attempts reached');
+      this.shouldReconnect = false;
+      this.emit('reconnectFailed', { attempts: this.reconnectAttempts });
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * this.reconnectAttempts;
+
+    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+    this.reconnectTimeout = setTimeout(() => {
+      if (this.userId && this.shouldReconnect) {
+        this.connect(this.userId);
+      }
+    }, delay);
   }
 
   disconnect() {
     console.log('🔴 Intentionally disconnecting WebSocket');
 
     this.isIntentionalClose = true;
-    this.shouldReconnect = false; // ✅ Disable reconnection on intentional disconnect
+    this.shouldReconnect = false;
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -254,13 +264,9 @@ export class WebSocketService {
       this.ws = null;
     }
 
-    // ✅ FIX: DON'T clear listeners! They need to persist for reconnection
-    // this.listeners.clear(); // ❌ REMOVED - causes loss of event handlers
-
     console.log('✅ WebSocket disconnected, listeners preserved');
   }
 
-  // ✅ NEW: Method to cleanly shutdown and clear everything (for logout)
   shutdown() {
     console.log('🔴 Shutting down WebSocket service completely');
 
@@ -279,7 +285,6 @@ export class WebSocketService {
       this.ws = null;
     }
 
-    // Only clear listeners on complete shutdown
     this.listeners.clear();
     this.userId = null;
     this.reconnectAttempts = 0;
@@ -293,16 +298,20 @@ export class WebSocketService {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(handler);
+    console.log(`✅ Registered listener for '${event}' (total: ${this.listeners.get(event)!.size})`);
   }
 
   off(event: string, handler: MessageHandler) {
-    this.listeners.get(event)?.delete(handler);
+    const removed = this.listeners.get(event)?.delete(handler);
+    if (removed) {
+      console.log(`✅ Removed listener for '${event}'`);
+    }
   }
 
   private emit(event: string, data: any) {
     const handlers = this.listeners.get(event);
     if (handlers && handlers.size > 0) {
-      console.log(`📤 Emitting ${event} to ${handlers.size} handlers`);
+      console.log(`📤 Emitting '${event}' to ${handlers.size} handler(s)`);
       handlers.forEach(handler => {
         try {
           handler(data);
@@ -311,7 +320,7 @@ export class WebSocketService {
         }
       });
     } else {
-      console.warn(`⚠️ No handlers registered for event: ${event}`);
+      console.warn(`⚠️ No handlers registered for event: '${event}'`);
     }
   }
 
@@ -319,7 +328,6 @@ export class WebSocketService {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  // Get current connection state for debugging
   getConnectionState(): string {
     if (!this.ws) return 'NULL';
 
@@ -332,7 +340,6 @@ export class WebSocketService {
     }
   }
 
-  // Add a method to update WebSocket URL after deployment
   setWebSocketUrl(url: string) {
     this.wsUrl = url;
   }

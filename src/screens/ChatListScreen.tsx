@@ -85,12 +85,13 @@ export default function ChatListScreen() {
     const wsService = WebSocketService.getInstance();
     wsServiceRef.current = wsService;
 
-    // Listen for chat-related events
-    wsService.on('chat_message', handleChatUpdate);
-    wsService.on('conversation_updated', handleChatUpdate);
+    // ✅ Listen for new messages to refresh conversation list
+    wsService.on('new_message', handleChatUpdate);
+    wsService.on('message_sent', handleChatUpdate);
 
     console.log('✅ ChatList WebSocket listeners registered');
   };
+
 
   const cleanup = () => {
     if (wsServiceRef.current) {
