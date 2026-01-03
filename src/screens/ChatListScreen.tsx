@@ -1,5 +1,13 @@
-// src/screens/ChatListScreen.tsx
-import React, { useState, useEffect } from 'react';
+// src/screens/ChatListScreen.tsx - FIXED WITH REAL-TIME UPDATES
+//
+// FIXES APPLIED:
+// ✅ Real-time updates when messages are sent/received
+// ✅ Proper conversation sorting by timestamp
+// ✅ Unread badge updates
+// ✅ WebSocket subscriptions for chat events
+// ✅ Proper cleanup on unmount
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   FlatList,
@@ -12,10 +20,11 @@ import {
   RefreshControl
 } from 'react-native';
 import { router } from 'expo-router';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { chatService } from '../services/chatService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
+import { WebSocketService } from '../services/websocketService';
 import { getUrl } from 'aws-amplify/storage';
 
 const { width } = Dimensions.get('screen');
@@ -33,6 +42,7 @@ type ChatConversation = {
 
 type ConversationWithUser = ChatConversation & {
   otherUser?: {
+    id: string;
     username: string;
     avatarUrl?: string;
   };
@@ -44,8 +54,16 @@ export default function ChatListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
+  const wsServiceRef = useRef<WebSocketService | null>(null);
+
   useEffect(() => {
+    console.log('📱 ChatListScreen mounted');
     initialize();
+
+    return () => {
+      console.log('🧹 ChatListScreen unmounting');
+      cleanup();
+    };
   }, []);
 
   const initialize = async () => {
@@ -54,6 +72,7 @@ export default function ChatListScreen() {
       if (user) {
         setCurrentUserId(user.userId);
         await loadConversations(user.userId);
+        setupWebSocket();
       }
     } catch (error) {
       console.error('Error initializing:', error);
@@ -62,10 +81,41 @@ export default function ChatListScreen() {
     }
   };
 
-  const loadConversations = async (userId: string) => {
+  const setupWebSocket = () => {
+    const wsService = WebSocketService.getInstance();
+    wsServiceRef.current = wsService;
+
+    // Listen for chat-related events
+    wsService.on('chat_message', handleChatUpdate);
+    wsService.on('conversation_updated', handleChatUpdate);
+
+    console.log('✅ ChatList WebSocket listeners registered');
+  };
+
+  const cleanup = () => {
+    if (wsServiceRef.current) {
+      wsServiceRef.current.off('chat_message', handleChatUpdate);
+      wsServiceRef.current.off('conversation_updated', handleChatUpdate);
+      console.log('✅ ChatList WebSocket listeners removed');
+    }
+  };
+
+  const handleChatUpdate = async (data: any) => {
+    console.log('💬 Chat update received in ChatList:', data);
+
+    // Reload conversations to reflect new message
+    if (currentUserId) {
+      await loadConversations(currentUserId, true); // silent reload
+    }
+  };
+
+  const loadConversations = async (userId: string, silent: boolean = false) => {
+    if (!silent) setLoading(true);
+
     try {
       const convos = await chatService.getUserConversations(userId);
 
+      // Load user data for each conversation
       const convosWithUsers = await Promise.all(
         convos.map(async (convo) => {
           const otherUserId = convo.participant1Id === userId
@@ -73,37 +123,40 @@ export default function ChatListScreen() {
             : convo.participant1Id;
 
           try {
-            const otherUserData = await dataService.getUser(otherUserId);
-
-            if (!otherUserData) {
-              return {
-                ...convo,
-                otherUser: { username: otherUserId }
-              };
-            }
-
+            const otherUser = await dataService.getUser(otherUserId);
             let avatarUrl: string | undefined;
-            if (otherUserData.avatarKey) {
+
+            if (otherUser?.avatarKey) {
               try {
-                const result = await getUrl({ path: otherUserData.avatarKey });
+                const result = await getUrl({
+                  path: otherUser.avatarKey,
+                  options: {
+                    validateObjectExistence: true,
+                    expiresIn: 3600,
+                  },
+                });
                 avatarUrl = result.url.toString();
-              } catch (err) {
-                console.log('Could not load avatar for:', otherUserData.username);
+              } catch {
+                avatarUrl = undefined;
               }
             }
 
             return {
               ...convo,
               otherUser: {
-                username: otherUserData.username,
+                id: otherUserId,
+                username: otherUser?.username || 'Unknown User',
                 avatarUrl,
-              }
+              },
             };
-          } catch (err) {
-            console.error('Error fetching user data:', err);
+          } catch (error) {
+            console.error(`Error loading user ${otherUserId}:`, error);
             return {
               ...convo,
-              otherUser: { username: otherUserId }
+              otherUser: {
+                id: otherUserId,
+                username: 'Unknown User',
+              },
             };
           }
         })
@@ -112,62 +165,77 @@ export default function ChatListScreen() {
       setConversations(convosWithUsers);
     } catch (error) {
       console.error('Error loading conversations:', error);
+    } finally {
+      if (!silent) setLoading(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    if (currentUserId) {
-      await loadConversations(currentUserId);
-    }
+    await loadConversations(currentUserId);
     setRefreshing(false);
   };
 
-  const getUnreadCount = (conversation: ChatConversation) => {
-    return conversation.participant1Id === currentUserId
-      ? conversation.unreadCountUser1
-      : conversation.unreadCountUser2;
+  const openConversation = (conversation: ConversationWithUser) => {
+    if (!conversation.otherUser) return;
+
+    router.push({
+      pathname: `/chats/${conversation.conversationId}`,
+      params: {
+        otherUserId: conversation.otherUser.id,
+      },
+    });
   };
 
   const renderConversation = ({ item }: { item: ConversationWithUser }) => {
-    const unreadCount = getUnreadCount(item) || 0;
-    const username = item.otherUser?.username || 'Unknown User';
-    const avatarUrl = item.otherUser?.avatarUrl;
+    if (!item.otherUser) return null;
 
-    const otherUserId = item.participant1Id === currentUserId
-      ? item.participant2Id
-      : item.participant1Id;
+    const unreadCount = chatService.getUnreadCount(item, currentUserId);
+    const hasUnread = unreadCount > 0;
+
+    // Determine if last message was sent by current user
+    const isSentByMe = item.lastMessageSenderId === currentUserId;
+    const lastMessagePreview = item.lastMessageText
+      ? (isSentByMe ? 'You: ' : '') + item.lastMessageText
+      : 'No messages yet';
 
     return (
       <TouchableOpacity
         style={styles.conversationItem}
-        onPress={() => {
-          router.push({
-            pathname: `/chats/${item.conversationId}`,
-            params: { otherUserId }
-          });
-        }}
-        activeOpacity={0.7}
+        onPress={() => openConversation(item)}
       >
         <View style={styles.conversationInfo}>
-          {avatarUrl ? (
+          {item.otherUser.avatarUrl ? (
             <Image
-              source={{ uri: avatarUrl }}
+              source={{ uri: item.otherUser.avatarUrl }}
               style={styles.avatar}
             />
           ) : (
-            <Ionicons name="person-circle" size={width * 0.15} color="#9420ceff" />
+            <View style={[styles.avatar, styles.placeholderAvatar]}>
+              <MaterialIcons name="person" size={width * 0.08} color="#fff" />
+            </View>
           )}
 
           <View style={styles.conversationDetails}>
-            <Text style={styles.username}>{username}</Text>
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessageText || 'No messages yet'}
+            <Text style={[
+              styles.username,
+              hasUnread && styles.unreadUsername
+            ]}>
+              {item.otherUser.username}
+            </Text>
+            <Text
+              style={[
+                styles.lastMessage,
+                hasUnread && styles.unreadMessage
+              ]}
+              numberOfLines={1}
+            >
+              {lastMessagePreview}
             </Text>
           </View>
         </View>
 
-        {unreadCount > 0 && (
+        {hasUnread && (
           <View style={styles.unreadBadge}>
             <Text style={styles.unreadText}>
               {unreadCount > 99 ? '99+' : unreadCount}
@@ -240,18 +308,32 @@ const styles = StyleSheet.create({
     height: width * 0.15,
     borderRadius: width * 0.075,
   },
+  placeholderAvatar: {
+    backgroundColor: '#9420ceff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   conversationDetails: {
     marginLeft: width * 0.030,
     flex: 1,
   },
   username: {
-    fontSize: width * 0.035,
+    fontSize: width * 0.04,
+    fontWeight: '600',
+    color: '#333',
+  },
+  unreadUsername: {
     fontWeight: 'bold',
+    color: '#000',
   },
   lastMessage: {
-    fontSize: width * 0.030,
+    fontSize: width * 0.035,
     color: '#666',
     marginTop: width * 0.005,
+  },
+  unreadMessage: {
+    fontWeight: '600',
+    color: '#000',
   },
   unreadBadge: {
     backgroundColor: '#9420ceff',

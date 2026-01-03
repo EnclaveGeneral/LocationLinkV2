@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/api";
 import type { Schema } from '../../amplify/data/resource'
-import { time } from "console";
+import { WebSocketService } from "./websocketService";
 
 const client = generateClient<Schema>();
 
@@ -30,7 +30,9 @@ export const chatService = {
       const {data: newConversation} = await client.models.ChatConversation.create({
         conversationId: conversationId,
         participant1Id: user1,
-        participant2Id: user2
+        participant2Id: user2,
+        unreadCountUser1: 0,
+        unreadCountUser2: 0,
       });
 
       return newConversation;
@@ -38,6 +40,19 @@ export const chatService = {
     } catch (error) {
       console.error('Error fetching/creating conversation:', error);
       throw error;
+    }
+  },
+
+  // Fetch a specific conversation by ConversationId
+  async getConversation(conversationId: string) {
+    try {
+      const { data } = await client.models.ChatConversation.get({
+        conversationId: conversationId
+      });
+      return data;
+    } catch (error: any) {
+      console.error('Error fetching conversation:', error.message);
+      return null;
     }
   },
 
@@ -99,51 +114,56 @@ export const chatService = {
         [unreadField]: 0,  // Dynamic field name using bracket notation
       });
 
+      console.log(`✅ Marked conversation ${conversationId} as read for user ${userId}`);
     } catch (error) {
       console.error('Error marking as read:', error);
     }
   },
 
+  // Get unread count for a specific conversation and user
+  getUnreadCount(conversation: any, userId: string): number {
+    if (!conversation) return 0;
+
+    const isUser1 = userId === conversation.participant1Id;
+    const unreadCount = isUser1
+      ? conversation.unreadCountUser1
+      : conversation.unreadCountUser2;
+
+    return unreadCount || 0;
+  },
+
   // Send a new message in a chatConversation object
   sendMessage (
-    ws: WebSocket,
+    ws: WebSocketService,
     conversationId: string,
     senderId: string,
     receiverId: string,
     messageText: string
   ) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        action: 'message',
-        type: 'chat_message',
-        conversationId: conversationId,
-        senderId: senderId,
-        receiverId: receiverId,
-        messageText: messageText,
-      }));
-    } else {
-      console.warn('⚠️ WebSocket not connected, cannot send message');
-    }
+    ws.send({
+      action: 'message',
+      type: 'CHAT_MESSAGE',
+      conversationId: conversationId,
+      senderId: senderId,
+      receiverId: receiverId,
+      messageText: messageText,
+    });
   },
 
   sendTypingIndicator (
-    ws: WebSocket,
+    ws: WebSocketService,
     conversationId: string,
     senderId: string,
     receiverId: string,
     isTyping: boolean
   ) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        action: 'message',
-        type: 'typing_indicator',
-        conversationId: conversationId,
-        senderId: senderId,
-        receiverId: receiverId,
-        isTyping: isTyping,
-      }));
-    } else {
-      console.warn('⚠️ WebSocket not connected, cannot send typing indicator');
-    }
+    ws.send({
+      action: 'message',
+      type: 'TYPING_INDICATOR',
+      conversationId: conversationId,
+      senderId: senderId,
+      receiverId: receiverId,
+      isTyping: isTyping,
+    })
   }
 };

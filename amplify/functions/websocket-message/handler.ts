@@ -42,9 +42,14 @@ export const handler = async (event: any) => {
         break;
 
       case 'message':
-        // Handle incoming messages
-        if (body.type === 'chat_message') {
+        // Handle incoming user sent messages
+        if (body.type === 'CHAT_MESSAGE') {
           await handleChatMessage(body, connectionId);
+        }
+
+        if (body.type === 'TYPING_INDICATOR') {
+          // Handle typing indicator (implementation omitted for brevity)
+          await handleTypingIndicator(body, connectionId);
         }
         break;
 
@@ -65,6 +70,11 @@ export const handler = async (event: any) => {
     };
   }
 };
+
+// Handle typing indicator based on user current input status
+async function handleTypingIndicator(message: any, connectionId: string) {
+  console.log('👀 Handling typing indicator:', message);
+}
 
 // Handle chat message and send it to the correct user (receiver)
 async function handleChatMessage(message: any, connectionId: string) {

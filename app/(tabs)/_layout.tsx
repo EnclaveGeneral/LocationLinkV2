@@ -167,7 +167,7 @@ function TabsContent() {
               end={{ x: 1, y: 0 }}
             >
               <View style={styles.headerContainer}>
-                <Text style={[styles.headerText, { color: theme.headerText }]}>My Chats</Text>
+                <Text style={[styles.headerText, { color: theme.headerText }]}>Current Chats</Text>
               </View>
             </LinearGradient>
           ),
