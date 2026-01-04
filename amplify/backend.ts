@@ -9,6 +9,7 @@ import { websocketConnectFunction } from './functions/websocket-connect/resource
 import { websocketDisconnectFunction } from './functions/websocket-disconnect/resource';
 import { websocketMessageFunction } from './functions/websocket-message/resource';
 import { websocketBroadcastFunction } from './functions/websocket-broadcast/resource';
+import { getMessagesFunction } from '../amplify/functions/get-messages/resource';
 import { Stack } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ServicePrincipal } from 'aws-cdk-lib/aws-iam';  // Grant DynamoDB permissions using IAM policies
 import { CfnApi, CfnRoute, CfnIntegration, CfnStage, CfnDeployment } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -26,6 +27,7 @@ const backend = defineBackend({
   websocketDisconnectFunction,
   websocketMessageFunction,
   websocketBroadcastFunction,
+  getMessagesFunction,
 });
 
 // Get the stack and resources
@@ -135,6 +137,9 @@ backend.websocketMessageFunction.resources.lambda.addPermission('WebSocketMessag
   sourceArn: `arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`,
 });
 
+
+
+
 // Add environment variables to WebSocket functions
 backend.websocketConnectFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketConnectFunction.addEnvironment('USER_TABLE_NAME', userTableName!);
@@ -220,6 +225,21 @@ backend.websocketMessageFunction.resources.lambda.addToRolePolicy(
   })
 );
 
+// Grant permissions
+backend.getMessagesFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      'dynamodb:Query',
+      'dynamodb:GetItem',
+    ],
+    resources: [
+      chatMessageTable.tableArn,
+      `${chatMessageTable.tableArn}/*`, // For secondary indexes
+    ],
+  })
+);
+
 // Add DynamoDB stream event sources to broadcast function
 backend.websocketBroadcastFunction.resources.lambda.addEventSource(
   new DynamoEventSource(userTable, {
@@ -270,6 +290,10 @@ backend.removeFriendFunction.addEnvironment(
   'FRIEND_TABLE_NAME',
   friendTableName!
 );
+backend.getMessagesFunction.addEnvironment(
+  'CHAT_MESSAGE_TABLE_NAME',
+  chatMessageTableName!
+)
 
 // Grant permissions for accept-friend-request function
 backend.acceptFriendRequestFunction.resources.lambda.addToRolePolicy(

@@ -2,6 +2,7 @@ import { generateClient } from "aws-amplify/api";
 import type { Schema } from '../../amplify/data/resource'
 import { WebSocketService } from "./websocketService";
 
+
 const client = generateClient<Schema>();
 
 export const chatService = {
@@ -82,27 +83,27 @@ export const chatService = {
   // Load messages for a specific chatConversation object between two users
   async getConversationMessages(conversationId: string, limit = 50) {
     try {
-      const { data } = await client.models.ChatMessage.list({
-        filter: {
-          conversationId: { eq: conversationId }
-        },
-        limit,
+      console.log('🔍 Fetching messages via Lambda:', conversationId);
+
+      // ✅ Use Lambda function instead of client.models.ChatMessage.list()
+      const response = await client.queries.getMessagesQuery({
+        conversationId,
+        limit
       });
 
-      // ✅ Filter out null/undefined items BEFORE sorting
-      const validMessages = data.filter(msg => msg !== null && msg !== undefined);
+      const messages = response.data || [];
 
-      return validMessages.sort((a, b) => {
-        const timeA = a.timestamp;
-        const timeB = b.timestamp;
-        return timeA.localeCompare(timeB);
-      });
+      console.log('📦 Messages from Lambda:', messages.length);
+      console.log('📝 First message:', messages[0]);
+
+      return messages;
 
     } catch (error) {
-      console.error('Error loading messages:', error);
+      console.error('❌ Error loading messages:', error);
       return [];
     }
   },
+
 
   // Reset unread message count for a user in a conversation
   async markConversationAsRead(conversationId: string, userId: string, conversation: any) {

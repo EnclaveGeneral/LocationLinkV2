@@ -941,6 +941,31 @@
           }
         }
       },
+      "queries": {
+        "getMessagesQuery": {
+          "name": "getMessagesQuery",
+          "isArray": true,
+          "type": {
+            "model": "ChatMessage"
+          },
+          "isRequired": false,
+          "isArrayNullable": true,
+          "arguments": {
+            "conversationId": {
+              "name": "conversationId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "limit": {
+              "name": "limit",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false
+            }
+          }
+        }
+      },
       "mutations": {
         "acceptFriendRequestLambda": {
           "name": "acceptFriendRequestLambda",

@@ -2,6 +2,7 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { acceptFriendRequestFunction } from '../functions/accept-friend-request/resource';
 import { removeFriendFunction } from '../functions/remove-friend/resource';
+import { getMessagesFunction } from '../functions/get-messages/resource';
 
 const schema = a.schema({
   User: a
@@ -108,8 +109,9 @@ const schema = a.schema({
     ])
     .identifier(['messageId'])
     .secondaryIndexes((index) => [
-      index('conversationId'),  // Only the one we actually need
+      index('conversationId'),
     ]),
+
 
 
   WebSocketConnection: a
@@ -155,6 +157,17 @@ const schema = a.schema({
     )
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(removeFriendFunction)),
+
+  getMessagesQuery: a
+    .query()
+    .arguments({
+      conversationId: a.string().required(),
+      limit: a.integer(),
+    })
+    .returns(a.ref('ChatMessage').array())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getMessagesFunction)),
+
 });
 
 export type Schema = ClientSchema<typeof schema>;
