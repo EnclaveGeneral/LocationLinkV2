@@ -493,15 +493,16 @@ export default function ChatScreen({ route }: any) {
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder={`Message ${friendUsername}...`}
+          placeholder={`Type your message here...`}
           placeholderTextColor="#999"
           multiline
           maxLength={500}
         />
         <TouchableOpacity
-          style={[
-            styles.sendButton,
-            !inputText.trim() && styles.sendButtonDisabled
+          style={[styles.sendButton,
+            !inputText.trim()
+              ? styles.sendButtonDisabled
+              : styles.sendButtonActive
           ]}
           onPress={sendMessage}
           disabled={!inputText.trim()}
@@ -509,7 +510,7 @@ export default function ChatScreen({ route }: any) {
           <Ionicons
             name="send"
             size={width * 0.06}
-            color={inputText.trim() ? '#fff' : '#ccc'}
+            color={'#fff'}
           />
         </TouchableOpacity>
       </View>
@@ -627,12 +628,14 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     marginLeft: width * 0.025,
-    backgroundColor: '#9420ceff',
     width: width * 0.12,
     height: width * 0.12,
     borderRadius: width * 0.06,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendButtonActive: {
+    backgroundColor: '#9420ceff',
   },
   sendButtonDisabled: {
     backgroundColor: '#ccc',

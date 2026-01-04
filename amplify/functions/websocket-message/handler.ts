@@ -128,7 +128,9 @@ async function handleChatMessage(message: any, connectionId: string) {
         receiverId: receiverId,
         content: messageText,  // ✅ Changed from "messageText" to "content"
         timestamp: timestamp,
-        status: 'sent'
+        status: 'sent',
+        createdAt: timestamp,
+        updatedAt: timestamp,
       }
     }));
 

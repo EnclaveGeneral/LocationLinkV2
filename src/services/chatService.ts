@@ -80,20 +80,43 @@ export const chatService = {
     }
   },
 
-  // Load messages for a specific chatConversation object between two users
   async getConversationMessages(conversationId: string, limit = 50) {
     try {
       console.log('🔍 Fetching messages via Lambda:', conversationId);
 
-      // ✅ Use Lambda function instead of client.models.ChatMessage.list()
       const response = await client.queries.getMessagesQuery({
         conversationId,
         limit
       });
 
-      const messages = response.data || [];
+      // ✅ Add detailed logging to see what we're getting back
+      console.log('📦 Full Lambda response:', JSON.stringify(response, null, 2));
+      console.log('📦 response.data:', response.data);
+      console.log('📦 response.errors:', response.errors);
 
-      console.log('📦 Messages from Lambda:', messages.length);
+      // Check for errors first
+      if (response.errors && response.errors.length > 0) {
+        console.error('❌ GraphQL errors:', response.errors);
+        throw new Error(response.errors[0].message);
+      }
+
+      // Handle different possible response structures
+      let messages: any[] = [];
+
+      if (Array.isArray(response.data)) {
+        // Direct array
+        messages = response.data;
+        console.log('📦 Messages as direct array:', messages.length);
+      } else if (response.data && typeof response.data === 'object') {
+        // Nested object
+        console.log('📦 Response data keys:', Object.keys(response.data));
+        messages = response.data;
+      } else {
+        console.warn('⚠️ Unexpected response format');
+        messages = [];
+      }
+
+      console.log('📦 Final messages count:', messages.length);
       console.log('📝 First message:', messages[0]);
 
       return messages;
