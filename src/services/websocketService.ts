@@ -158,6 +158,14 @@ export class WebSocketService {
         this.emit('friendRequestDeleted', message);
         break;
 
+      case 'message_delivered':
+        this.emit('message_delivered', message);
+        break;
+
+      case 'message_read':
+        this.emit('message_read', message);
+        break;
+
       // ============================================
       // CHAT MESSAGES (NEW)
       // ============================================

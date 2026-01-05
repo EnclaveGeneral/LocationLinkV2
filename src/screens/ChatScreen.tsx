@@ -228,13 +228,15 @@ export default function ChatScreen({ route }: any) {
     }
   }
 
+  // Load existing messages in the chat conversation window
   const loadMessages = async (userId: string) => {
     try {
-      const data = await chatService.getConversationMessages(conversationId);
+      console.log('📥 Loading messages for conversation:', conversationId);
 
+      const data = await chatService.getConversationMessages(conversationId);
       console.log('📥 Messages from database:', data.length);
 
-      // ✅ Double-check for valid messages (paranoid filtering)
+      // ✅ Double-check for valid messages
       const validMessages = data
         .filter(msg => msg !== null && msg !== undefined)
         .filter(msg => msg.messageId && msg.content && msg.timestamp);
@@ -246,6 +248,21 @@ export default function ChatScreen({ route }: any) {
       // Mark conversation as read
       if (conversation) {
         await chatService.markConversationAsRead(conversationId, userId, conversation);
+
+        // ✅ ALSO UPDATE MESSAGE STATUS TO 'READ'
+        // Only update messages sent by the other user that aren't already read
+        const otherUserMessages = validMessages
+          .filter(msg => msg.senderId === otherUserId && msg.status !== 'read')
+          .map(msg => msg.messageId);
+
+        if (otherUserMessages.length > 0) {
+          console.log(`📖 Marking ${otherUserMessages.length} messages as read`);
+          try {
+            await chatService.updateMessageStatus(otherUserMessages, 'read');
+          } catch (error) {
+            console.error('Failed to mark messages as read:', error);
+          }
+        }
       }
 
       // Auto-scroll to bottom
@@ -265,6 +282,7 @@ export default function ChatScreen({ route }: any) {
   };
 
 
+
   // ============================================
   // WEBSOCKET SETUP
   // ============================================
@@ -277,6 +295,8 @@ export default function ChatScreen({ route }: any) {
     wsService.on('message_sent', handleMessageSent);
     wsService.on('message_error', handleMessageError);
     wsService.on('typing_indicator', handleTypingIndicator);
+    wsService.on('message_delivered', handleMessageDelivered);  // ✅ ADD THIS
+    wsService.on('message_read', handleMessageRead);  // ✅ ADD THIS
 
     console.log('✅ WebSocket listeners registered for chat');
   };
@@ -287,6 +307,9 @@ export default function ChatScreen({ route }: any) {
       wsServiceRef.current.off('message_sent', handleMessageSent);
       wsServiceRef.current.off('message_error', handleMessageError);
       wsServiceRef.current.off('typing_indicator', handleTypingIndicator);
+      wsServiceRef.current.off('message_delivered', handleMessageDelivered);  // ✅ ADD THIS
+      wsServiceRef.current.off('message_read', handleMessageRead);  // ✅ ADD THIS
+
       console.log('✅ WebSocket listeners removed');
     }
 
@@ -302,7 +325,7 @@ export default function ChatScreen({ route }: any) {
   // ============================================
   // WEBSOCKET EVENT HANDLERS
   // ============================================
-  const handleNewMessage = (data: any) => {
+  const handleNewMessage = async (data: any) => {
     console.log('📨 New message received via WebSocket:', data);
 
     // Only process messages for THIS conversation
@@ -326,9 +349,8 @@ export default function ChatScreen({ route }: any) {
       receiverId: data.receiverId || currentUserId,
       content: data.content,
       timestamp: data.timestamp || new Date().toISOString(),
-      status: 'delivered',
+      status: 'delivered',  // Set to delivered since we received it
     };
-
 
     setMessages(prev => {
       // Prevent duplicates
@@ -344,6 +366,13 @@ export default function ChatScreen({ route }: any) {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
+
+    // ✅ UPDATE STATUS IN DATABASE TO 'DELIVERED'
+    try {
+      await chatService.updateMessageStatus([data.messageId], 'delivered');
+    } catch (error) {
+      console.error('Failed to update message status to delivered:', error);
+    }
   };
 
   const handleMessageSent = (data: any) => {
@@ -424,6 +453,32 @@ export default function ChatScreen({ route }: any) {
         }
       }
     }
+  };
+
+  const handleMessageDelivered = (data: any) => {
+    console.log('✅ Message(s) delivered:', data);
+
+    // Update local UI state
+    setMessages(prev => prev.map(msg => {
+      const updated = data.messages?.find((m: any) => m.messageId === msg.messageId);
+      if (updated && updated.status === 'delivered') {
+        return { ...msg, status: 'delivered' as const };
+      }
+      return msg;
+    }));
+  };
+
+  const handleMessageRead = (data: any) => {
+    console.log('✅ Message(s) read:', data);
+
+    // Update local UI state
+    setMessages(prev => prev.map(msg => {
+      const updated = data.messages?.find((m: any) => m.messageId === msg.messageId);
+      if (updated && updated.status === 'read') {
+        return { ...msg, status: 'read' as const };
+      }
+      return msg;
+    }));
   };
 
 

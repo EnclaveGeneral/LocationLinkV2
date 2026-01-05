@@ -159,6 +159,11 @@ backend.websocketMessageFunction.addEnvironment('CHAT_CONVERSATION_TABLE_NAME', 
 backend.websocketBroadcastFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketBroadcastFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoint);
 
+
+backend.updateMessageStatusFunction.addEnvironment('CHAT_MESSAGE_TABLE_NAME', chatMessageTableName!);
+backend.updateMessageStatusFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
+backend.updateMessageStatusFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoint);
+
 // Grant DynamoDB permissions to access WebSocket functions
 [
   backend.websocketConnectFunction,

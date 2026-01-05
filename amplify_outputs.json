@@ -899,6 +899,14 @@
             "delivered",
             "read"
           ]
+        },
+        "UpdateMessageStatusStatus": {
+          "name": "UpdateMessageStatusStatus",
+          "values": [
+            "sent",
+            "delivered",
+            "read"
+          ]
         }
       },
       "nonModels": {
@@ -923,6 +931,25 @@
         },
         "RemoveFriendLambdaReturnType": {
           "name": "RemoveFriendLambdaReturnType",
+          "fields": {
+            "success": {
+              "name": "success",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "UpdateMessageStatusReturnType": {
+          "name": "UpdateMessageStatusReturnType",
           "fields": {
             "success": {
               "name": "success",
@@ -996,6 +1023,31 @@
               "isArray": false,
               "type": "String",
               "isRequired": true
+            }
+          }
+        },
+        "updateMessageStatus": {
+          "name": "updateMessageStatus",
+          "isArray": false,
+          "type": {
+            "nonModel": "UpdateMessageStatusReturnType"
+          },
+          "isRequired": false,
+          "arguments": {
+            "messageIds": {
+              "name": "messageIds",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "isArrayNullable": false
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "UpdateMessageStatusStatus"
+              },
+              "isRequired": false
             }
           }
         }
