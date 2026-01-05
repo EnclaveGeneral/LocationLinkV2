@@ -54,6 +54,12 @@ export default function ChatScreen({ route }: any) {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [conversation, setConversation] = useState<any>(null);
 
+  // Other user state
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingSendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isTypingRef = useRef(false);
+
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [modalContent, setModalContent] = useState({
@@ -185,6 +191,43 @@ export default function ChatScreen({ route }: any) {
     }
   };
 
+  const handleInputChange = (text: string) => {
+    setInputText(text);
+
+    if (wsServiceRef.current && text.trim()) {
+      if (!isTypingRef.current) {
+        chatService.sendTypingIndicator(
+          wsServiceRef.current as any,
+          conversationId,
+          currentUserId,
+          otherUserId,
+          true
+        );
+        isTypingRef.current = true;
+      }
+
+      // Reset the stop typing timeout
+      if (typingSendTimeoutRef.current) {
+        clearTimeout(typingSendTimeoutRef.current);
+      }
+
+      // Stop typing after 2 seconds of inactivity
+      typingSendTimeoutRef.current = setTimeout(() => {
+        if (wsServiceRef.current && isTypingRef.current) {
+          chatService.sendTypingIndicator(
+            wsServiceRef.current as any,
+            conversationId,
+            currentUserId,
+            otherUserId,
+            false
+          );
+          isTypingRef.current = false;
+        }
+      }, 2000);
+
+    }
+  }
+
   const loadMessages = async (userId: string) => {
     try {
       const data = await chatService.getConversationMessages(conversationId);
@@ -245,6 +288,14 @@ export default function ChatScreen({ route }: any) {
       wsServiceRef.current.off('message_error', handleMessageError);
       wsServiceRef.current.off('typing_indicator', handleTypingIndicator);
       console.log('✅ WebSocket listeners removed');
+    }
+
+    // ✅ ADD TIMER CLEANUP
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    if (typingSendTimeoutRef.current) {
+      clearTimeout(typingSendTimeoutRef.current);
     }
   };
 
@@ -356,7 +407,22 @@ export default function ChatScreen({ route }: any) {
     // Only show typing indicator for this conversation
     if (data.conversationId === conversationId && data.senderId === otherUserId) {
       console.log(`💬 ${friendUsername} is ${data.isTyping ? 'typing' : 'stopped typing'}...`);
-      // TODO: Implement typing indicator UI if desired
+      // Implement typing indicator UI if desired
+
+      setIsOtherUserTyping(data.isTyping);
+
+      if (data.isTyping) {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsOtherUserTyping(false);
+        }, 3000);
+      } else {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+      }
     }
   };
 
@@ -487,6 +553,20 @@ export default function ChatScreen({ route }: any) {
         }
       />
 
+      {/* ✅ TYPING INDICATOR - ADD THIS */}
+      {isOtherUserTyping && (
+        <View style={styles.typingIndicatorContainer}>
+          <View style={styles.typingBubble}>
+            <View style={styles.typingDots}>
+              <View style={[styles.dot, styles.dot1]} />
+              <View style={[styles.dot, styles.dot2]} />
+              <View style={[styles.dot, styles.dot3]} />
+            </View>
+          </View>
+          <Text style={styles.typingText}>{friendUsername} is typing...</Text>
+        </View>
+      )}
+
       {/* Input Area */}
       <View style={styles.inputContainer}>
         <TextInput
@@ -595,6 +675,44 @@ const styles = StyleSheet.create({
   myTimestamp: {
     color: '#e0d0ff',
   },
+  typingIndicatorContainer: {
+    paddingHorizontal: width * 0.025,
+    paddingVertical: width * 0.015,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  typingBubble: {
+    backgroundColor: '#e5e5ea',
+    borderRadius: width * 0.04,
+    paddingHorizontal: width * 0.03,
+    paddingVertical: width * 0.02,
+    marginRight: width * 0.02,
+  },
+  typingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: width * 0.01,
+  },
+  dot: {
+    width: width * 0.015,
+    height: width * 0.015,
+    borderRadius: width * 0.0075,
+    backgroundColor: '#999',
+  },
+  dot1: {
+    opacity: 0.4,
+  },
+  dot2: {
+    opacity: 0.6,
+  },
+  dot3: {
+    opacity: 0.8,
+  },
+  typingText: {
+    fontSize: width * 0.032,
+    color: '#666',
+    fontStyle: 'italic',
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -639,5 +757,5 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#ccc',
-  },
+  }
 });

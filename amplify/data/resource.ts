@@ -3,6 +3,7 @@ import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { acceptFriendRequestFunction } from '../functions/accept-friend-request/resource';
 import { removeFriendFunction } from '../functions/remove-friend/resource';
 import { getMessagesFunction } from '../functions/get-messages/resource';
+import { updateMessageStatusFunction } from '../functions/update-message-status/resource';
 
 const schema = a.schema({
   User: a
@@ -167,6 +168,22 @@ const schema = a.schema({
     .returns(a.ref('ChatMessage').array())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(getMessagesFunction)),
+
+  updateMessageStatus: a
+    .mutation()
+    .arguments({
+      messageIds: a.string().array().required(),
+      status: a.enum(['sent', 'delivered', 'read']),
+    })
+    .returns(
+      a.customType({
+        success: a.boolean().required(),
+        message: a.string(),
+      })
+    )
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(updateMessageStatusFunction)),
+
 
 });
 

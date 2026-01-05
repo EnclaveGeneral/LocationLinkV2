@@ -10,6 +10,7 @@ import { websocketDisconnectFunction } from './functions/websocket-disconnect/re
 import { websocketMessageFunction } from './functions/websocket-message/resource';
 import { websocketBroadcastFunction } from './functions/websocket-broadcast/resource';
 import { getMessagesFunction } from '../amplify/functions/get-messages/resource';
+import { updateMessageStatusFunction } from './functions/update-message-status/resource';
 import { Stack } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ServicePrincipal } from 'aws-cdk-lib/aws-iam';  // Grant DynamoDB permissions using IAM policies
 import { CfnApi, CfnRoute, CfnIntegration, CfnStage, CfnDeployment } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -28,6 +29,7 @@ const backend = defineBackend({
   websocketMessageFunction,
   websocketBroadcastFunction,
   getMessagesFunction,
+  updateMessageStatusFunction,
 });
 
 // Get the stack and resources
@@ -239,6 +241,32 @@ backend.getMessagesFunction.resources.lambda.addToRolePolicy(
     ],
   })
 );
+
+backend.updateMessageStatusFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      'dynamodb:UpdateItem',
+      'dynamodb:Query',
+    ],
+    resources: [
+      chatMessageTable.tableArn,
+      `${chatMessageTable.tableArn}/*`,
+      connectionsTable.tableArn,
+      `${connectionsTable.tableArn}/*`,
+    ],
+  })
+);
+
+backend.updateMessageStatusFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ['execute-api:ManageConnections'],
+    resources: [`arn:aws:execute-api:${stack.region}:${stack.account}:${webSocketApi.ref}/*`],
+  })
+);
+
+
 
 // Add DynamoDB stream event sources to broadcast function
 backend.websocketBroadcastFunction.resources.lambda.addEventSource(

@@ -147,6 +147,32 @@ export const chatService = {
     }
   },
 
+  async updateMessageStatus(messageIds: string[], status: 'delivered' | 'read') {
+    try {
+      console.log(`🔄 Updating ${messageIds.length} message(s) to ${status}`);
+
+      const { data, errors } = await client.mutations.updateMessageStatus({
+        messageIds,
+        status,
+      });
+
+      if (errors) {
+        console.error('Error updating status:', errors);
+        throw new Error(errors[0]?.message || 'Failed to update status');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.message || 'Failed to update status');
+      }
+
+      console.log(`✅ Status updated: ${data.message}`);
+      return true;
+    } catch (error) {
+      console.error('Error updating message status:', error);
+      return false;
+    }
+  },
+
   // Get unread count for a specific conversation and user
   getUnreadCount(conversation: any, userId: string): number {
     if (!conversation) return 0;
