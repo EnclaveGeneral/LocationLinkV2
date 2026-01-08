@@ -100,6 +100,7 @@ export const chatService = {
         await client.models.ChatMessage.delete({
           messageId: message.messageId
         });
+        console.log('Message being deleted...');
       }
 
       // Delete this conversation

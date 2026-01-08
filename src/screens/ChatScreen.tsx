@@ -169,14 +169,24 @@ export default function ChatScreen({ route }: any) {
               },
             });
             setFriendAvatar(result.url.toString());
-          } catch (error) {
-            console.log('No avatar available for friend');
+          } catch (error : any) {
+            setModalContent({
+              type: 'error',
+              title: 'Loading Friend Error',
+              message: error.message || 'An error has occured while loading friends data'
+            });
+            setModalVisible(true);
             setFriendAvatar(null);
           }
         }
       }
-    } catch (error) {
-      console.error('Error loading friend data:', error);
+    } catch (error: any) {
+      setModalContent({
+        type: 'error',
+        title: 'Loading Friend Error',
+        message: error.message || 'An error has occured while loading friends data'
+      });
+      setModalVisible(true);
       setFriendUsername('Unknown User');
     }
   };
@@ -185,8 +195,13 @@ export default function ChatScreen({ route }: any) {
     try {
       const conv = await chatService.getConversation(convId);
       return conv;
-    } catch (error) {
-      console.error('Error loading conversation:', error);
+    } catch (error: any) {
+      setModalContent({
+        type: 'error',
+        title: 'Loading Conversation Error',
+        message: error.message || 'An error has occured while loading conversation'
+      });
+      setModalVisible(true);
       return null;
     }
   };

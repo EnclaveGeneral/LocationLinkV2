@@ -353,8 +353,14 @@ export default function MapScreen() {
               await locationService.startBackgroundTracking(userIdRef.current, isLocationSharing);
               backgroundTrackingStarted = true;
               console.log('✅ Background started');
-            } catch (error) {
-              console.error('❌ Background start failed:', error);
+            } catch (error: any) {
+              setModalStats({
+                type: 'error',
+                title: 'Background Initialization Failure',
+                message: error.message || 'An error has occured during background initialization'
+              });
+              setShowModal(true);
+              console.log('❌ Background start failed:', error);
             }
 
             transitionInProgress = false;
@@ -415,8 +421,14 @@ export default function MapScreen() {
           }
         }
 
-      } catch (error) {
-        console.error('❌ Transition error:', error);
+      } catch (error: any) {
+        setModalStats({
+          type: 'error',
+          title: 'Transition Phase Error',
+          message: error.message || 'An error has occured during transition'
+        });
+        setShowModal(true);
+        console.log('❌ Transition error:', error);
       } finally {
         lastState = nextAppState;
       }
@@ -692,8 +704,14 @@ export default function MapScreen() {
       await new Promise(resolve => setTimeout(resolve, 200));
 
 
-    } catch (error) {
-      console.error('Error initializing map:', error);
+    } catch (error: any) {
+      setModalStats({
+        type: 'error',
+        title: 'Initialization Failure',
+        message: error.message || 'An error has occured during Map initialization'
+      });
+      setShowModal(true);
+      console.log('Error initializing map:', error);
       setLoading(false);
     }
   };
@@ -742,8 +760,14 @@ export default function MapScreen() {
           updateLocationInDB(userId, location);
         }
       });
-    } catch (error) {
-      console.error('Error starting foreground tracking:', error);
+    } catch (error: any) {
+      setModalStats({
+        type: 'error',
+        title: 'Location Tracking Failure',
+        message: error.message || 'An error(s) has occured while attempting foreground tracking'
+      });
+      setShowModal(true);
+      console.log('Error starting foreground tracking:', error);
     }
   };
 
@@ -754,8 +778,14 @@ export default function MapScreen() {
         longitude: location.longitude,
         locationUpdatedAt: new Date().toISOString(),
       });
-    } catch (error) {
-      console.error('❌ Failed to update location after retries:', error);
+    } catch (error: any) {
+      setModalStats({
+        type: 'error',
+        title: 'Update Failure',
+        message: error.message || 'An error(s) has occured while attempting to update location'
+      });
+      setShowModal(true);
+      console.log('❌ Failed to update location after retries:', error);
       // Silent fail - don't crash app
     }
   };

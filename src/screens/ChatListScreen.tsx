@@ -89,8 +89,13 @@ export default function ChatListScreen() {
         await loadConversations(user.userId);
         setupWebSocket();
       }
-    } catch (error) {
-      console.error('Error initializing:', error);
+    } catch (error : any) {
+      setModalContent({
+        type: 'error',
+        title: 'Initialization Error',
+        message: error.message || 'An error has occured during initialization.'
+      });
+      setModalVisible(true);
     } finally {
       setLoading(false);
     }
@@ -285,8 +290,13 @@ export default function ChatListScreen() {
       );
 
       setConversations(convosWithUsers);
-    } catch (error) {
-      console.error('Error loading conversations:', error);
+    } catch (error : any) {
+      setModalContent({
+        type: 'error',
+        title: 'Loading Error',
+        message: error.message || 'An error has occured while attempting to load conversation'
+      });
+      setModalVisible(true);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -307,6 +317,15 @@ export default function ChatListScreen() {
   const closeConversation = async () => {
     try {
       await chatService.deleteConversationAndMessages(curConversationId);
+
+      setModalVisible(false);
+
+      setConversations(prev =>
+        prev.filter(c => c.conversationId !== curConversationId)
+      );
+
+      setCurConversationId('');
+      console.log('✅ Conversation deleted successfully');
 
     } catch (error : any) {
       setModalContent({
@@ -425,6 +444,7 @@ export default function ChatListScreen() {
       />
 
       <CustomModal
+        type={modalContent.type}
         visible={modalVisible}
         title={modalContent.title}
         message={modalContent.message}
