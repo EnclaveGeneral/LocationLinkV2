@@ -162,9 +162,11 @@ export class WebSocketService {
         this.emit('message_delivered', message);
         break;
 
-      case 'message_read':
-        this.emit('message_read', message);
+      case 'conversation_update':
+        console.log('Emitting conversation_update event:', message);
+        this.emit('conversation_update', message);
         break;
+
 
       // ============================================
       // CHAT MESSAGES (NEW)

@@ -1,4 +1,5 @@
-// src/screens/ChatScreen.tsx - ACTUALLY FIXED VERSION
+// src/screens/ChatScreen.tsx
+// STREAMLINED VERSION - Fixed init order, focus/blur typing, mark delivered on open
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   View,
@@ -31,7 +32,7 @@ type Message = {
   receiverId: string;
   content: string;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read' | null;
+  status?: 'sent' | 'delivered' | null;
 };
 
 type RouteParams = {
@@ -52,13 +53,11 @@ export default function ChatScreen({ route }: any) {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [conversation, setConversation] = useState<any>(null);
 
-  // Other user state
+  // Typing indicator state
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const typingSendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isTypingRef = useRef(false);
+  const isInputFocusedRef = useRef(false);
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -70,10 +69,10 @@ export default function ChatScreen({ route }: any) {
 
   const flatListRef = useRef<FlatList>(null);
   const wsServiceRef = useRef<WebSocketService | null>(null);
+  const currentUserIdRef = useRef<string>('');
 
-  // Track pending messages for better optimistic UI
-  // tempId -> content
-  const pendingMessageRef = useRef<Map<String, String>>(new Map());
+  // Track pending messages for optimistic UI (tempId -> content)
+  const pendingMessageRef = useRef<Map<string, string>>(new Map());
 
   // ============================================
   // DYNAMIC HEADER SETUP
@@ -124,18 +123,19 @@ export default function ChatScreen({ route }: any) {
       }
 
       setCurrentUserId(user.userId);
+      currentUserIdRef.current = user.userId;
 
       // Load friend data first (for header)
       await loadFriendData(otherUserId);
 
-      // Load conversation data
-      await loadConversation(conversationId);
+      // Load conversation data - returns the conversation object
+      const conv = await loadConversation(conversationId);
 
-      // Load messages
-      await loadMessages(user.userId);
-
-      // Setup WebSocket
+      // Setup WebSocket BEFORE loading messages
       setupWebSocket();
+
+      // Load messages and mark as delivered - pass conversation directly
+      await loadMessages(user.userId, conv);
 
     } catch (error: any) {
       console.error('Error initializing chat:', error);
@@ -159,7 +159,6 @@ export default function ChatScreen({ route }: any) {
       if (friendData) {
         setFriendUsername(friendData.username || 'Unknown User');
 
-        // Load avatar if exists
         if (friendData.avatarKey) {
           try {
             const result = await getUrl({
@@ -182,86 +181,57 @@ export default function ChatScreen({ route }: any) {
     }
   };
 
-  const loadConversation = async (convId: string) => {
+  const loadConversation = async (convId: string): Promise<any> => {
     try {
       const conv = await chatService.getConversation(convId);
-      setConversation(conv);
+      return conv;
     } catch (error) {
       console.error('Error loading conversation:', error);
+      return null;
     }
   };
 
-  const handleInputChange = (text: string) => {
-    setInputText(text);
-
-    if (wsServiceRef.current && text.trim()) {
-      if (!isTypingRef.current) {
-        chatService.sendTypingIndicator(
-          wsServiceRef.current as any,
-          conversationId,
-          currentUserId,
-          otherUserId,
-          true
-        );
-        isTypingRef.current = true;
-      }
-
-      // Reset the stop typing timeout
-      if (typingSendTimeoutRef.current) {
-        clearTimeout(typingSendTimeoutRef.current);
-      }
-
-      // Stop typing after 2 seconds of inactivity
-      typingSendTimeoutRef.current = setTimeout(() => {
-        if (wsServiceRef.current && isTypingRef.current) {
-          chatService.sendTypingIndicator(
-            wsServiceRef.current as any,
-            conversationId,
-            currentUserId,
-            otherUserId,
-            false
-          );
-          isTypingRef.current = false;
-        }
-      }, 2000);
-
-    }
-  }
-
-  // Load existing messages in the chat conversation window
-  const loadMessages = async (userId: string) => {
+  // Load messages and mark as delivered - accepts conversation as parameter
+  const loadMessages = async (userId: string, conversation: any) => {
     try {
       console.log('📥 Loading messages for conversation:', conversationId);
 
       const data = await chatService.getConversationMessages(conversationId);
       console.log('📥 Messages from database:', data.length);
 
-      // ✅ Double-check for valid messages
+      // Filter valid messages
       const validMessages = data
-        .filter(msg => msg !== null && msg !== undefined)
-        .filter(msg => msg.messageId && msg.content && msg.timestamp);
+        .filter((msg: any) => msg !== null && msg !== undefined)
+        .filter((msg: any) => msg.messageId && msg.content && msg.timestamp);
 
       console.log(`✅ Valid messages: ${validMessages.length}`);
 
       setMessages(validMessages);
 
-      // Mark conversation as read
+      // Mark conversation as read (resets unread badge)
       if (conversation) {
         await chatService.markConversationAsRead(conversationId, userId, conversation);
+        console.log("✅ Conversation marked as read");
+      }
 
-        // ✅ ALSO UPDATE MESSAGE STATUS TO 'READ'
-        // Only update messages sent by the other user that aren't already read
-        const otherUserMessages = validMessages
-          .filter(msg => msg.senderId === otherUserId && msg.status !== 'read')
-          .map(msg => msg.messageId);
+      // Mark other user's messages as delivered
+      const undeliveredMessages = validMessages
+        .filter((msg: any) => msg.senderId === otherUserId && msg.status !== 'delivered')
+        .map((msg: any) => msg.messageId);
 
-        if (otherUserMessages.length > 0) {
-          console.log(`📖 Marking ${otherUserMessages.length} messages as read`);
-          try {
-            await chatService.updateMessageStatus(otherUserMessages, 'read');
-          } catch (error) {
-            console.error('Failed to mark messages as read:', error);
-          }
+      if (undeliveredMessages.length > 0) {
+        console.log(`📖 Marking ${undeliveredMessages.length} messages as delivered`);
+
+        // Use WebSocket method if available, otherwise use GraphQL mutation
+        if (wsServiceRef.current?.isConnected()) {
+          chatService.sendMarkDelivered(
+            wsServiceRef.current,
+            undeliveredMessages,
+            conversationId,
+            userId
+          );
+        } else {
+          await chatService.markMessagesDelivered(undeliveredMessages);
         }
       }
 
@@ -281,8 +251,6 @@ export default function ChatScreen({ route }: any) {
     }
   };
 
-
-
   // ============================================
   // WEBSOCKET SETUP
   // ============================================
@@ -295,30 +263,35 @@ export default function ChatScreen({ route }: any) {
     wsService.on('message_sent', handleMessageSent);
     wsService.on('message_error', handleMessageError);
     wsService.on('typing_indicator', handleTypingIndicator);
-    wsService.on('message_delivered', handleMessageDelivered);  // ✅ ADD THIS
-    wsService.on('message_read', handleMessageRead);  // ✅ ADD THIS
+    wsService.on('message_delivered', handleMessageDelivered);
 
     console.log('✅ WebSocket listeners registered for chat');
   };
 
   const cleanup = () => {
+    // Send typing stop if we were typing
+    if (isInputFocusedRef.current && wsServiceRef.current && currentUserIdRef.current) {
+      chatService.sendTypingStop(
+        wsServiceRef.current,
+        conversationId,
+        currentUserIdRef.current,
+        otherUserId
+      );
+    }
+
+    // Remove WebSocket listeners
     if (wsServiceRef.current) {
       wsServiceRef.current.off('new_message', handleNewMessage);
       wsServiceRef.current.off('message_sent', handleMessageSent);
       wsServiceRef.current.off('message_error', handleMessageError);
       wsServiceRef.current.off('typing_indicator', handleTypingIndicator);
-      wsServiceRef.current.off('message_delivered', handleMessageDelivered);  // ✅ ADD THIS
-      wsServiceRef.current.off('message_read', handleMessageRead);  // ✅ ADD THIS
-
+      wsServiceRef.current.off('message_delivered', handleMessageDelivered);
       console.log('✅ WebSocket listeners removed');
     }
 
-    // ✅ ADD TIMER CLEANUP
+    // Clear typing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
-    }
-    if (typingSendTimeoutRef.current) {
-      clearTimeout(typingSendTimeoutRef.current);
     }
   };
 
@@ -335,7 +308,7 @@ export default function ChatScreen({ route }: any) {
     }
 
     // Check if message is from the other person (not our own echo)
-    if (data.senderId === currentUserId) {
+    if (data.senderId === currentUserIdRef.current) {
       console.log('⏭️ Message is from self, already in UI');
       return;
     }
@@ -346,10 +319,10 @@ export default function ChatScreen({ route }: any) {
       messageId: data.messageId,
       conversationId: data.conversationId,
       senderId: data.senderId,
-      receiverId: data.receiverId || currentUserId,
+      receiverId: data.receiverId || currentUserIdRef.current,
       content: data.content,
       timestamp: data.timestamp || new Date().toISOString(),
-      status: 'delivered',  // Set to delivered since we received it
+      status: 'delivered', // We received it, so it's delivered
     };
 
     setMessages(prev => {
@@ -367,11 +340,14 @@ export default function ChatScreen({ route }: any) {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    // ✅ UPDATE STATUS IN DATABASE TO 'DELIVERED'
-    try {
-      await chatService.updateMessageStatus([data.messageId], 'delivered');
-    } catch (error) {
-      console.error('Failed to update message status to delivered:', error);
+    // Mark this message as delivered via WebSocket
+    if (wsServiceRef.current) {
+      chatService.sendMarkDelivered(
+        wsServiceRef.current,
+        [data.messageId],
+        conversationId,
+        currentUserIdRef.current
+      );
     }
   };
 
@@ -433,20 +409,20 @@ export default function ChatScreen({ route }: any) {
   };
 
   const handleTypingIndicator = (data: any) => {
-    // Only show typing indicator for this conversation
+    // Only show typing indicator for this conversation from the other user
     if (data.conversationId === conversationId && data.senderId === otherUserId) {
       console.log(`💬 ${friendUsername} is ${data.isTyping ? 'typing' : 'stopped typing'}...`);
-      // Implement typing indicator UI if desired
 
       setIsOtherUserTyping(data.isTyping);
 
+      // Auto-clear typing indicator after 30 seconds as safety fallback
       if (data.isTyping) {
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
         }
         typingTimeoutRef.current = setTimeout(() => {
           setIsOtherUserTyping(false);
-        }, 3000);
+        }, 30000);
       } else {
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
@@ -468,20 +444,36 @@ export default function ChatScreen({ route }: any) {
     }));
   };
 
-  const handleMessageRead = (data: any) => {
-    console.log('✅ Message(s) read:', data);
+  // ============================================
+  // INPUT HANDLERS
+  // ============================================
+  const handleInputFocus = () => {
+    console.log('⌨️ TextInput focused');
+    isInputFocusedRef.current = true;
 
-    // Update local UI state
-    setMessages(prev => prev.map(msg => {
-      const updated = data.messages?.find((m: any) => m.messageId === msg.messageId);
-      if (updated && updated.status === 'read') {
-        return { ...msg, status: 'read' as const };
-      }
-      return msg;
-    }));
+    if (wsServiceRef.current && currentUserIdRef.current) {
+      chatService.sendTypingStart(
+        wsServiceRef.current,
+        conversationId,
+        currentUserIdRef.current,
+        otherUserId
+      );
+    }
   };
 
+  const handleInputBlur = () => {
+    console.log('⌨️ TextInput blurred');
+    isInputFocusedRef.current = false;
 
+    if (wsServiceRef.current && currentUserIdRef.current) {
+      chatService.sendTypingStop(
+        wsServiceRef.current,
+        conversationId,
+        currentUserIdRef.current,
+        otherUserId
+      );
+    }
+  };
 
   // ============================================
   // SEND MESSAGE
@@ -495,7 +487,6 @@ export default function ChatScreen({ route }: any) {
 
     // Track this pending message
     pendingMessageRef.current.set(tempId, messageContent);
-
 
     // Optimistic UI - show message immediately
     const optimisticMessage: Message = {
@@ -516,16 +507,15 @@ export default function ChatScreen({ route }: any) {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    // Send via WebSocket using chatService.sendMessage()
+    // Send via WebSocket
     try {
       chatService.sendMessage(
-        wsServiceRef.current as any,
+        wsServiceRef.current,
         conversationId,
         currentUserId,
         otherUserId,
         messageContent
       );
-
       console.log('📤 Message sent via WebSocket');
     } catch (error: any) {
       // Remove optimistic message on error
@@ -536,7 +526,7 @@ export default function ChatScreen({ route }: any) {
       setModalContent({
         type: 'error',
         title: 'Error sending message',
-        message: error.message || 'An unexpected error occurred while sending your message.',
+        message: error.message || 'An unexpected error occurred while sending your message. Please try again.',
       });
       setModalVisible(true);
     }
@@ -564,12 +554,14 @@ export default function ChatScreen({ route }: any) {
           isMine && styles.myTimestamp
         ]}>
           {new Date(item.timestamp).toLocaleTimeString([], {
+            month: '2-digit',
+            day: '2-digit',
             hour: '2-digit',
             minute: '2-digit'
           })}
-          {item.status === null && ' ⏳'}
-          {item.status === 'sent' && ' ✓'}
-          {item.status === 'delivered' && ' ✓✓'}
+          {isMine && item.status === null && ' Sending...'}
+          {isMine && item.status === 'sent' && ' Sent'}
+          {isMine && item.status === 'delivered' && ' Read'}
         </Text>
       </View>
     );
@@ -608,7 +600,7 @@ export default function ChatScreen({ route }: any) {
         }
       />
 
-      {/* ✅ TYPING INDICATOR - ADD THIS */}
+      {/* Typing Indicator */}
       {isOtherUserTyping && (
         <View style={styles.typingIndicatorContainer}>
           <View style={styles.typingBubble}>
@@ -628,16 +620,17 @@ export default function ChatScreen({ route }: any) {
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder={`Type your message here...`}
+          onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
+          placeholder="Type your message here..."
           placeholderTextColor="#999"
           multiline
           maxLength={500}
         />
         <TouchableOpacity
-          style={[styles.sendButton,
-            !inputText.trim()
-              ? styles.sendButtonDisabled
-              : styles.sendButtonActive
+          style={[
+            styles.sendButton,
+            !inputText.trim() ? styles.sendButtonDisabled : styles.sendButtonActive
           ]}
           onPress={sendMessage}
           disabled={!inputText.trim()}
@@ -645,7 +638,7 @@ export default function ChatScreen({ route }: any) {
           <Ionicons
             name="send"
             size={width * 0.06}
-            color={'#fff'}
+            color="#fff"
           />
         </TouchableOpacity>
       </View>
@@ -812,5 +805,5 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#ccc',
-  }
+  },
 });

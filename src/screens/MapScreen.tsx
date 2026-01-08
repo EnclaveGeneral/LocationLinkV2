@@ -90,7 +90,7 @@ const getRandomColor = (oderId: string) => {
 // ============================================
 // FRIEND MARKER COMPONENT (unchanged - already animated)
 // ============================================
-const FriendMarker = ({ friend, coordinate, color }: any) => {
+const FriendMarker = ({ friend, coordinate, color, reloadVersion }: any) => {
   // Load once and keep it for friend pfps
   const tracksViewChangesRef = useRef(true);
   const hasLoadedRef = useRef(false);
@@ -102,6 +102,12 @@ const FriendMarker = ({ friend, coordinate, color }: any) => {
       console.log(`✅ Image loaded for ${friend.username}, stopped tracking changes`);
     }
   }, [friend.username]);
+
+  // Render friend marker pfp when force reloaded
+  useEffect(() => {
+    hasLoadedRef.current = false;
+    tracksViewChangesRef.current = true;
+  }, [reloadVersion]);
 
   // Reset tracking only when avatar URL actually changes (e.g. user updates profile pic)
   useEffect(() => {
@@ -224,6 +230,7 @@ export default function MapScreen() {
     title: '',
     message: ''
   });
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   // ✅ FIX 1: Animated user coordinate (prevents snappy jumping)
   const userAnimatedCoordinate = useRef(new AnimatedRegion({
@@ -915,6 +922,7 @@ export default function MapScreen() {
               friend={friend}
               coordinate={anim.coordinate}
               color={markerColor}
+              reloadVersion={reloadVersion}
             />
           );
         })}
@@ -948,6 +956,7 @@ export default function MapScreen() {
         style={[styles.refreshButton, { backgroundColor: theme.buttonBg }]}
         onPress={async () => {
           await forceReload();
+          setReloadVersion(prev => prev + 1); // Trigger any dependent effects
           console.log('🔄 Manual refresh triggered');
         }}
       >
@@ -1129,10 +1138,10 @@ const styles = StyleSheet.create({
     width: width * 0.08,
     height: width * 0.08,
     borderRadius: width * 0.04,
+    borderColor: '#9420ceff',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: width * 0.0045,
-    borderColor: 'white',
     overflow: 'hidden',
   },
   friendMarkerText: {

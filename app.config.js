@@ -23,6 +23,7 @@ export default {
       supportsTablet: true,
       bundleIdentifier: "com.theenclave.locationlink",
       package: "com.theenclave.locationlink",
+      userInterfaceStyle: "automatic",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS
       },
@@ -34,6 +35,7 @@ export default {
     },
     android: {
       package: "com.theenclave.locationlink",
+      userInterfaceStyle: "automatic",
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID

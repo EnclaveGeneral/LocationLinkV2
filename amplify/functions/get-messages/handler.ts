@@ -11,7 +11,7 @@ type ChatMessage = {
   receiverId: string;
   content: string;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read' | null;
+  status?: 'sent' | 'delivered' | null;
   createdAt: string;
   updatedAt: string;
 };

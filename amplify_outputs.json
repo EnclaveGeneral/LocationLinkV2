@@ -896,16 +896,14 @@
           "name": "ChatMessageStatus",
           "values": [
             "sent",
-            "delivered",
-            "read"
+            "delivered"
           ]
         },
         "UpdateMessageStatusStatus": {
           "name": "UpdateMessageStatusStatus",
           "values": [
             "sent",
-            "delivered",
-            "read"
+            "delivered"
           ]
         }
       },

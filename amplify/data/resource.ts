@@ -103,7 +103,7 @@ const schema = a.schema({
       receiverId: a.id().required(),
       content: a.string().required(),
       timestamp: a.datetime().required(),
-      status: a.enum(['sent', 'delivered', 'read']),
+      status: a.enum(['sent', 'delivered']),
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create']),
@@ -173,7 +173,7 @@ const schema = a.schema({
     .mutation()
     .arguments({
       messageIds: a.string().array().required(),
-      status: a.enum(['sent', 'delivered', 'read']),
+      status: a.enum(['sent', 'delivered']),
     })
     .returns(
       a.customType({

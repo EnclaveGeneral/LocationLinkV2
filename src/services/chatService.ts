@@ -1,34 +1,35 @@
+// src/services/chatService.ts
+// STREAMLINED VERSION - Simplified typing indicator, removed 'read' status
 import { generateClient } from "aws-amplify/api";
-import type { Schema } from '../../amplify/data/resource'
+import type { Schema } from '../../amplify/data/resource';
 import { WebSocketService } from "./websocketService";
-
 
 const client = generateClient<Schema>();
 
 export const chatService = {
 
+  // ============================================
+  // CONVERSATION MANAGEMENT
+  // ============================================
+
   // Retrieve current conversation object or create one if it doesn't exist
   async getOrCreateConversation(currentUserId: string, friendId: string) {
-
     // Sort it such that user1 and user2 is always in alphabetical order
     const [user1, user2] = [currentUserId, friendId].sort();
-
     const conversationId = `${user1}_${user2}`;
 
-    // Now attemt to fetch existing conversation, if not, create a new one
     try {
       // See if conversationId already exists
-      const {data: existing} = await client.models.ChatConversation.get({
+      const { data: existing } = await client.models.ChatConversation.get({
         conversationId: conversationId
       });
 
-      // If we already have it
       if (existing) {
         return existing;
       }
 
-      // Otherwise, we need to create a new one then deploy it
-      const {data: newConversation} = await client.models.ChatConversation.create({
+      // Otherwise, create a new one
+      const { data: newConversation } = await client.models.ChatConversation.create({
         conversationId: conversationId,
         participant1Id: user1,
         participant2Id: user2,
@@ -67,7 +68,7 @@ export const chatService = {
             { participant2Id: { eq: userId } }
           ]
         }
-      })
+      });
 
       return data.sort((a, b) => {
         const timeA = a.lastMessageTimestamp || '';
@@ -80,6 +81,43 @@ export const chatService = {
     }
   },
 
+  // ==================
+  // Delete a conversation and all messages associated with the conversation
+  // ==================
+
+  async deleteConversationAndMessages(conversationId: string) {
+    try {
+
+      // Delete all message related to this conversation as well!
+      const { data: messages } = await client.models.ChatMessage.list({
+        filter: {
+          conversationId: { eq: conversationId }
+        }
+      });
+
+      // Delete each message
+      for (const message of messages) {
+        await client.models.ChatMessage.delete({
+          messageId: message.messageId
+        });
+      }
+
+      // Delete this conversation
+      await client.models.ChatConversation.delete({
+        conversationId: conversationId
+      })
+
+      console.log('Conversation and its associated message deleted successfully!');
+    } catch (error: any) {
+      console.log('❌ Error deleting selected conversation and its associated messages: ', error.message);
+      throw error;
+    }
+  },
+
+  // ============================================
+  // MESSAGE MANAGEMENT
+  // ============================================
+
   async getConversationMessages(conversationId: string, limit = 50) {
     try {
       console.log('🔍 Fetching messages via Lambda:', conversationId);
@@ -89,7 +127,6 @@ export const chatService = {
         limit
       });
 
-      // ✅ Add detailed logging to see what we're getting back
       console.log('📦 Full Lambda response:', JSON.stringify(response, null, 2));
       console.log('📦 response.data:', response.data);
       console.log('📦 response.errors:', response.errors);
@@ -104,11 +141,9 @@ export const chatService = {
       let messages: any[] = [];
 
       if (Array.isArray(response.data)) {
-        // Direct array
         messages = response.data;
         console.log('📦 Messages as direct array:', messages.length);
       } else if (response.data && typeof response.data === 'object') {
-        // Nested object
         console.log('📦 Response data keys:', Object.keys(response.data));
         messages = response.data;
       } else {
@@ -117,7 +152,9 @@ export const chatService = {
       }
 
       console.log('📦 Final messages count:', messages.length);
-      console.log('📝 First message:', messages[0]);
+      if (messages.length > 0) {
+        console.log('📝 First message:', messages[0]);
+      }
 
       return messages;
 
@@ -127,6 +164,9 @@ export const chatService = {
     }
   },
 
+  // ============================================
+  // STATUS MANAGEMENT
+  // ============================================
 
   // Reset unread message count for a user in a conversation
   async markConversationAsRead(conversationId: string, userId: string, conversation: any) {
@@ -135,25 +175,31 @@ export const chatService = {
       const isUser1 = userId === conversation.participant1Id;
       const unreadField = isUser1 ? 'unreadCountUser1' : 'unreadCountUser2';
 
-      // Update the appropriate unread count to 0
       await client.models.ChatConversation.update({
         conversationId: conversationId,
-        [unreadField]: 0,  // Dynamic field name using bracket notation
+        [unreadField]: 0,
       });
 
       console.log(`✅ Marked conversation ${conversationId} as read for user ${userId}`);
     } catch (error) {
       console.error('Error marking as read:', error);
+      throw error;
     }
   },
 
-  async updateMessageStatus(messageIds: string[], status: 'delivered' | 'read') {
+  // Mark messages as delivered (called when user opens chat)
+  async markMessagesDelivered(messageIds: string[]) {
+    if (messageIds.length === 0) {
+      console.log('⏭️ No messages to mark as delivered');
+      return true;
+    }
+
     try {
-      console.log(`🔄 Updating ${messageIds.length} message(s) to ${status}`);
+      console.log(`🔄 Marking ${messageIds.length} message(s) as delivered`);
 
       const { data, errors } = await client.mutations.updateMessageStatus({
         messageIds,
-        status,
+        status: 'delivered',
       });
 
       if (errors) {
@@ -168,7 +214,7 @@ export const chatService = {
       console.log(`✅ Status updated: ${data.message}`);
       return true;
     } catch (error) {
-      console.error('Error updating message status:', error);
+      console.error('Error marking messages as delivered:', error);
       return false;
     }
   },
@@ -185,8 +231,12 @@ export const chatService = {
     return unreadCount || 0;
   },
 
-  // Send a new message in a chatConversation object
-  sendMessage (
+  // ============================================
+  // WEBSOCKET MESSAGING
+  // ============================================
+
+  // Send a new message via WebSocket
+  sendMessage(
     ws: WebSocketService,
     conversationId: string,
     senderId: string,
@@ -204,20 +254,56 @@ export const chatService = {
     console.log('➡️ Sending chat message:', { conversationId, senderId, receiverId, messageText });
   },
 
-  sendTypingIndicator (
+  // Send typing START indicator (when TextInput is focused)
+  sendTypingStart(
     ws: WebSocketService,
     conversationId: string,
     senderId: string,
-    receiverId: string,
-    isTyping: boolean
+    receiverId: string
   ) {
     ws.send({
       action: 'message',
-      type: 'TYPING_INDICATOR',
+      type: 'TYPING_START',
       conversationId: conversationId,
       senderId: senderId,
       receiverId: receiverId,
-      isTyping: isTyping,
-    })
-  }
+    });
+    console.log('⌨️ Sending typing START');
+  },
+
+  // Send typing STOP indicator (when TextInput is blurred or screen unmounts)
+  sendTypingStop(
+    ws: WebSocketService,
+    conversationId: string,
+    senderId: string,
+    receiverId: string
+  ) {
+    ws.send({
+      action: 'message',
+      type: 'TYPING_STOP',
+      conversationId: conversationId,
+      senderId: senderId,
+      receiverId: receiverId,
+    });
+    console.log('⌨️ Sending typing STOP');
+  },
+
+  // Mark messages as delivered via WebSocket (alternative to GraphQL mutation)
+  sendMarkDelivered(
+    ws: WebSocketService,
+    messageIds: string[],
+    conversationId: string,
+    receiverId: string
+  ) {
+    if (messageIds.length === 0) return;
+
+    ws.send({
+      action: 'message',
+      type: 'MARK_DELIVERED',
+      messageIds: messageIds,
+      conversationId: conversationId,
+      receiverId: receiverId,
+    });
+    console.log('📖 Sending mark delivered for', messageIds.length, 'messages');
+  },
 };
