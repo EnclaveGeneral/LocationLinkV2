@@ -1,3 +1,6 @@
+
+
+
 // src/screens/ProfileScreen.tsx - FIXED VERSION
 //
 // FIXES APPLIED:

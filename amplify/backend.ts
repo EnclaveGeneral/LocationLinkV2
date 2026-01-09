@@ -11,6 +11,7 @@ import { websocketMessageFunction } from './functions/websocket-message/resource
 import { websocketBroadcastFunction } from './functions/websocket-broadcast/resource';
 import { getMessagesFunction } from '../amplify/functions/get-messages/resource';
 import { updateMessageStatusFunction } from './functions/update-message-status/resource';
+import { deleteConversationFunction } from './functions/delete-conversation/resource';
 import { Stack } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ServicePrincipal } from 'aws-cdk-lib/aws-iam';  // Grant DynamoDB permissions using IAM policies
 import { CfnApi, CfnRoute, CfnIntegration, CfnStage, CfnDeployment } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -30,6 +31,7 @@ const backend = defineBackend({
   websocketBroadcastFunction,
   getMessagesFunction,
   updateMessageStatusFunction,
+  deleteConversationFunction,
 });
 
 // Get the stack and resources
@@ -276,6 +278,22 @@ backend.updateMessageStatusFunction.resources.lambda.addToRolePolicy(
   })
 );
 
+backend.deleteConversationFunction.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: [
+      'dynamodb:Query',
+      'dynamodb:DeleteItem',
+    ],
+    resources: [
+      chatMessageTable.tableArn,
+      `${chatMessageTable.tableArn}/*`,
+      chatConversationTable.tableArn,
+      `${chatConversationTable.tableArn}/*`,
+    ],
+  })
+);
+
 
 
 // Add DynamoDB stream event sources to broadcast function
@@ -331,7 +349,15 @@ backend.removeFriendFunction.addEnvironment(
 backend.getMessagesFunction.addEnvironment(
   'CHAT_MESSAGE_TABLE_NAME',
   chatMessageTableName!
-)
+);
+backend.deleteConversationFunction.addEnvironment(
+  'CHAT_MESSAGE_TABLE_NAME',
+  chatMessageTableName!
+);
+backend.deleteConversationFunction.addEnvironment(
+  'CHAT_CONVERSATION_TABLE_NAME',
+  chatConversationTableName!
+);
 
 // Grant permissions for accept-friend-request function
 backend.acceptFriendRequestFunction.resources.lambda.addToRolePolicy(

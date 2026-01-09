@@ -276,8 +276,14 @@ export default function ChatListScreen() {
                 avatarUrl,
               },
             };
-          } catch (error) {
-            console.error(`Error loading user ${otherUserId}:`, error);
+          } catch (error: any) {
+            setModalContent({
+              type: 'error',
+              title: 'User Loading Error',
+              message: error.message || 'An error(s) has occured while attempting to load user information'
+            });
+            setModalVisible(true);
+            console.log(`Error loading user ${otherUserId}:`, error);
             return {
               ...convo,
               otherUser: {

@@ -4,6 +4,7 @@ import { acceptFriendRequestFunction } from '../functions/accept-friend-request/
 import { removeFriendFunction } from '../functions/remove-friend/resource';
 import { getMessagesFunction } from '../functions/get-messages/resource';
 import { updateMessageStatusFunction } from '../functions/update-message-status/resource';
+import { deleteConversationFunction } from '../functions/delete-conversation/resource';
 
 const schema = a.schema({
   User: a
@@ -184,7 +185,19 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(updateMessageStatusFunction)),
 
-
+  deleteConversation: a
+    .mutation()
+    .arguments({
+      conversationId: a.string().required(),
+    })
+    .returns(
+      a.customType({
+        success: a.boolean().required(),
+        message: a.string(),
+      })
+    )
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(deleteConversationFunction))
 });
 
 export type Schema = ClientSchema<typeof schema>;

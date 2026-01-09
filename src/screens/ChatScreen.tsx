@@ -138,7 +138,7 @@ export default function ChatScreen({ route }: any) {
       await loadMessages(user.userId, conv);
 
     } catch (error: any) {
-      console.error('Error initializing chat:', error);
+      console.log('Error initializing chat:', error);
       setModalContent({
         type: 'error',
         title: 'Error Initializing Chat',
@@ -397,7 +397,7 @@ export default function ChatScreen({ route }: any) {
   };
 
   const handleMessageError = (data: any) => {
-    console.error('❌ Message send error:', data);
+    console.log('❌ Message send error:', data);
 
     // Remove the failed message from UI
     if (data.originalMessage?.conversationId === conversationId) {
@@ -537,7 +537,7 @@ export default function ChatScreen({ route }: any) {
       pendingMessageRef.current.delete(tempId);
       setMessages(prev => prev.filter(msg => msg.messageId !== tempId));
 
-      console.error('Error sending message:', error);
+      console.log('Error sending message:', error);
       setModalContent({
         type: 'error',
         title: 'Error sending message',

@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { LocationService, LocationUpdate } from '../services/locationService';
 import { WebSocketService } from '../services/websocketService';
 import { authService } from '../services/authService';
@@ -513,8 +514,14 @@ export default function MapScreen() {
   const openLocationSettings = async () => {
     try {
       await Linking.openSettings();
-    } catch (error) {
-      console.error('Error opening settings:', error);
+    } catch (error: any) {
+      setModalStats({
+        type: 'error',
+        title: 'Settings Error',
+        message: error.message || 'An error(s) has occured while attempting to open settings'
+      });
+      setShowModal(true)
+      console.log('Error opening settings:', error);
     }
   };
 
@@ -560,8 +567,9 @@ export default function MapScreen() {
       const user = await authService.getCurrentUser();
 
       if (!user) {
-        console.error('No user found');
+        console.log('No user found');
         setLoading(false);
+        router.replace('/signin');
         return;
       }
       userIdRef.current = user.userId;
@@ -652,8 +660,13 @@ export default function MapScreen() {
             };
             console.log('✅ Got location from getCurrentPosition');
           }
-        } catch (err) {
-          console.error('❌ getCurrentPosition also failed:', err);
+        } catch (error : any) {
+          setModalStats({
+            type: 'error',
+            title: 'Location Service Error',
+            message: error.message || "An error(s) has occured while attempting to fetch your location"
+          });
+          setShowModal(true);
         }
       }
 

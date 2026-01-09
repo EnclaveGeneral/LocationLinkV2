@@ -87,33 +87,30 @@ export const chatService = {
 
   async deleteConversationAndMessages(conversationId: string) {
     try {
+      console.log(`🗑️ Deleting conversation via Lambda: ${conversationId}`);
 
-      // Delete all message related to this conversation as well!
-      const { data: messages } = await client.models.ChatMessage.list({
-        filter: {
-          conversationId: { eq: conversationId }
-        }
+      const response = await client.mutations.deleteConversation({
+        conversationId
       });
 
-      // Delete each message
-      for (const message of messages) {
-        await client.models.ChatMessage.delete({
-          messageId: message.messageId
-        });
-        console.log('Message being deleted...');
+      console.log('📦 Delete response:', response);
+
+      if (response.errors && response.errors.length > 0) {
+        throw new Error(response.errors[0].message);
       }
 
-      // Delete this conversation
-      await client.models.ChatConversation.delete({
-        conversationId: conversationId
-      })
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Deletion failed');
+      }
 
-      console.log('Conversation and its associated message deleted successfully!');
+      console.log('✅', response.data.message);
+
     } catch (error: any) {
-      console.log('❌ Error deleting selected conversation and its associated messages: ', error.message);
+      console.log('❌ Error deleting conversation:', error.message);
       throw error;
     }
   },
+
 
   // ============================================
   // MESSAGE MANAGEMENT

@@ -100,7 +100,7 @@ export default function FriendsScreen() {
       setSelectedFriend(null);
       setModalVisible(true);
     } catch (error: any) {
-      console.error('❌ Error removing friend:', error);
+      console.log('❌ Error removing friend:', error);
       if (error.message === 'Request timeout') {
         setModal(
           'Request Timeout',
