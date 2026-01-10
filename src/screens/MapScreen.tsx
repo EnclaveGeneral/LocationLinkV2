@@ -147,7 +147,7 @@ const FriendMarker = ({ friend, coordinate, color, reloadVersion }: any) => {
 // ============================================
 // USER MARKER COMPONENT (Animated Version)
 // ============================================
-const UserMarker = ({
+const UserMarker = React.memo(({
   coordinate,
   locationAccuracy,
   theme
@@ -156,11 +156,30 @@ const UserMarker = ({
   locationAccuracy: 'low' | 'high';
   theme: typeof COLORS;
 }) => {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  // Stop tracking after initial render
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Re-enable tracking when accuracy changes, then disable again
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [locationAccuracy]);
+
   return (
     <Marker.Animated
       coordinate={coordinate as any}
       anchor={{ x: 0.5, y: 0.5 }}
-      tracksViewChanges={true}
+      tracksViewChanges={tracksViewChanges}
     >
       <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
         <View style={[
@@ -170,7 +189,10 @@ const UserMarker = ({
       </View>
     </Marker.Animated>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if accuracy changes (theme changes don't matter visually)
+  return prevProps.locationAccuracy === nextProps.locationAccuracy;
+});
 
 // Loading steps
 type LoadingStep = 'auth' | 'permissions' | 'location' | 'tracking' | 'done';
@@ -525,7 +547,7 @@ export default function MapScreen() {
     }
   };
 
-  const requestNotificationPermission = async () => {
+  const requestNotificationPermission = async (): Promise<boolean> => {
     if (Platform.OS === 'android' && Platform.Version >= 33) {
       try {
         const { PermissionsAndroid } = require('react-native');
@@ -540,16 +562,17 @@ export default function MapScreen() {
           }
         );
 
-        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          console.log('✅ Notification permission granted');
-        } else {
-          console.log('⚠️ Notification permission denied');
-        }
+        const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+        console.log(isGranted ? '✅ Notification permission granted' : '⚠️ Notification permission denied');
+        return isGranted;
       } catch (err) {
         console.warn('Error requesting notification permission:', err);
+        return false;
       }
     }
+    return true; // iOS/older Android don't need explicit permission
   };
+
 
   // ============================================
   // MAP INITIALIZATION

@@ -127,9 +127,11 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
-  const decrementUnreadByConversation = (conversationId: string, amount: number) => {
+  const decrementUnreadByConversation = useCallback((conversationId: string, amount: number) => {
+    console.log(`📉 Decrementing unread by ${amount} for conversation ${conversationId}`);
     setUnreadMessages(prev => Math.max(0, prev - amount));
-  };
+  }, []);
+
 
   // ============================================
   // LOAD ALL DATA (parallel for performance)
@@ -209,6 +211,12 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // FORCE RELOAD (public method)
   // ============================================
   const forceReload = useCallback(async () => {
+    // Guard mechanism
+    if (!currentUserIdRef.current) {
+      console.warn('⚠️ Cannot reload - user not initialized');
+      return;  // ✅ Add this guard
+    }
+
     console.log('🔄 Force reload triggered');
     await loadAllData();
   }, [loadAllData]);
@@ -238,14 +246,41 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // WEBSOCKET EVENT HANDLERS
         // ============================================
 
-        wsService.on('connected', () => {
+        wsService.on('connected', async () => {
           console.log('✅ WebSocket connected event');
-          if (mounted) setIsWebSocketConnected(true);
+          if (mounted) {
+            setIsWebSocketConnected(true);
+
+            // ✅ Calculate initial unread count from all conversations
+            try {
+              const conversations = await chatService.getUserConversations(currentUserIdRef.current!);
+              const totalUnread = conversations.reduce((sum, conv) => {
+                const isUser1 = conv.participant1Id === currentUserIdRef.current;
+                const count = isUser1 ? (conv.unreadCountUser1 || 0) : (conv.unreadCountUser2 || 0);
+                return sum + count;
+              }, 0);
+              console.log(`📊 Initial unread count: ${totalUnread}`);
+              setUnreadMessages(totalUnread);
+            } catch (error) {
+              console.error('❌ Error calculating initial unread:', error);
+            }
+          }
         });
+
 
         wsService.on('disconnected', () => {
           console.log('❌ WebSocket disconnected');
-          if (mounted) setIsWebSocketConnected(false);
+          if (mounted) {
+            setIsWebSocketConnected(false);
+
+            // ✅ ADD RECONNECTION LOGIC
+            setTimeout(() => {
+              if (mounted && currentUserIdRef.current && wsServiceRef.current) {
+                console.log('🔄 Attempting WebSocket reconnection...');
+                wsServiceRef.current.connect(currentUserIdRef.current);
+              }
+            }, 3000);  // Wait 3 seconds before reconnecting
+          }
         });
 
         // Friend location/status updates

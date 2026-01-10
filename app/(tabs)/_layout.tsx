@@ -2,7 +2,7 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs, Redirect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { View, ActivityIndicator, StyleSheet, Text, Image, ImageSourcePropType, Dimensions, useColorScheme } from 'react-native';
 import { SubscriptionProvider, useSubscriptions } from '../../src/contexts/SubscriptionContext';
@@ -27,7 +27,7 @@ const DARK_THEME = {
 const { height, width } = Dimensions.get('screen');
 
 // Create our custom TabIcons
-const TabIcon = ({
+const TabIcon = React.memo(({
   source,
   color,
   size,
@@ -49,6 +49,8 @@ const TabIcon = ({
         return { backgroundColor: '#A910F5' }
       case 'requests':
         return { backgroundColor: '#32af16ff' }
+      case 'chats':
+        return { backgroundColor: '#ec1c1cff' }  // ✅ ADD RED FOR UNREAD MESSAGES
       default:
         return { backgroundColor: '#666666ff' }
     }
@@ -58,6 +60,7 @@ const TabIcon = ({
     <View style={styles.tabIcon}>
       <Image
         source={source}
+        resizeMode="contain"  // ✅ ADD THIS
         style={[
           styles.baseIcon,
           {
@@ -77,7 +80,15 @@ const TabIcon = ({
       )}
     </View>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if these specific props change
+  return (
+    prevProps.focused === nextProps.focused &&
+    prevProps.badgeCount === nextProps.badgeCount &&
+    prevProps.color === nextProps.color
+  );
+});
+
 
 // Separate component that uses the subscription hook
 function TabsContent() {
