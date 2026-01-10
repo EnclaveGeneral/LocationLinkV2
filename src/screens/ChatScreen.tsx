@@ -22,6 +22,7 @@ import { WebSocketService } from '../services/websocketService';
 import { getUrl } from 'aws-amplify/storage';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/modal';
+import { useSubscriptions } from '@/contexts/SubscriptionContext';
 
 const { width } = Dimensions.get('screen');
 
@@ -66,6 +67,8 @@ export default function ChatScreen({ route }: any) {
     title: '',
     message: '',
   });
+
+  const { decrementUnreadByConversation } = useSubscriptions();
 
   const flatListRef = useRef<FlatList>(null);
   const wsServiceRef = useRef<WebSocketService | null>(null);
@@ -223,9 +226,19 @@ export default function ChatScreen({ route }: any) {
 
       setMessages(validMessages);
 
+      const isParticipant1 = conversation.participant1Id === userId;
+      const myPreviousUnreadCount = isParticipant1
+      ? (conversation.unreadCountUser1 || 0)
+      : (conversation.unreadCountUser2 || 0);
+
+
       // Mark conversation as read (resets unread badge)
       if (conversation) {
+
         await chatService.markConversationAsRead(conversationId, userId, conversation);
+
+        decrementUnreadByConversation(conversationId, myPreviousUnreadCount);
+
         console.log("✅ Conversation marked as read");
       }
 

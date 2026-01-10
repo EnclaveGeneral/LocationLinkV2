@@ -155,9 +155,6 @@ backend.websocketBroadcastFunction.addEnvironment('FRIEND_TABLE_NAME', friendTab
 backend.websocketBroadcastFunction.addEnvironment('FRIEND_REQUEST_TABLE_NAME', friendRequestTableName!);
 
 // For all chat functionalities
-backend.websocketMessageFunction.addEnvironment('CHAT_MESSAGE_TABLE_NAME', chatMessageTableName!);
-backend.websocketMessageFunction.addEnvironment('CHAT_CONVERSATION_TABLE_NAME', chatConversationTableName!);
-
 backend.websocketBroadcastFunction.addEnvironment('CONNECTIONS_TABLE_NAME', connectionsTableName!);
 backend.websocketBroadcastFunction.addEnvironment('WEBSOCKET_ENDPOINT', wsEndpoint);
 
@@ -289,7 +286,6 @@ backend.deleteConversationFunction.resources.lambda.addToRolePolicy(
       chatMessageTable.tableArn,
       `${chatMessageTable.tableArn}/*`,
       chatConversationTable.tableArn,
-      `${chatConversationTable.tableArn}/*`,
     ],
   })
 );

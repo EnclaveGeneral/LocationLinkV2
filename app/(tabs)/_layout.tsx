@@ -85,7 +85,7 @@ function TabsContent() {
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? DARK_THEME : LIGHT_THEME;
 
-  const { pendingRequests, friends } = useSubscriptions();
+  const { pendingRequests, friends, unreadMessages } = useSubscriptions();
   const friendsOnline = friends.filter(f => f?.isLocationSharing).length;
 
   const insets = useSafeAreaInsets();
@@ -182,7 +182,7 @@ function TabsContent() {
               size={iconSize || size}
               focused={focused}
               type='chats'
-              badgeCount={0}  // TODO: Add unread message count
+              badgeCount={unreadMessages}  // TODO: Add unread message count
             />
           ),
         }}

@@ -964,6 +964,25 @@
               "attributes": []
             }
           }
+        },
+        "DeleteConversationReturnType": {
+          "name": "DeleteConversationReturnType",
+          "fields": {
+            "success": {
+              "name": "success",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
         }
       },
       "queries": {
@@ -1046,6 +1065,22 @@
                 "enum": "UpdateMessageStatusStatus"
               },
               "isRequired": false
+            }
+          }
+        },
+        "deleteConversation": {
+          "name": "deleteConversation",
+          "isArray": false,
+          "type": {
+            "nonModel": "DeleteConversationReturnType"
+          },
+          "isRequired": false,
+          "arguments": {
+            "conversationId": {
+              "name": "conversationId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
             }
           }
         }

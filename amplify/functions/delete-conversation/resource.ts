@@ -5,4 +5,5 @@ export const deleteConversationFunction = defineFunction({
   name: 'delete-conversation',
   entry: './handler.ts',
   timeoutSeconds: 30,
+  resourceGroupName: 'data'
 });

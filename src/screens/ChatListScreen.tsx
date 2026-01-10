@@ -19,6 +19,7 @@ import { chatService } from '../services/chatService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { WebSocketService } from '../services/websocketService';
+import { useSubscriptions } from '@/contexts/SubscriptionContext';
 import { getUrl } from 'aws-amplify/storage';
 import CustomModal from '@/components/modal';
 
@@ -54,6 +55,8 @@ export default function ChatListScreen() {
 
   // Current conversation
   const [curConversationId, setCurConversationId] = useState<string>('');
+
+  const { decrementUnreadByConversation } = useSubscriptions();
 
   // Modal
   const [modalContent, setModalContent] = useState({
@@ -322,6 +325,14 @@ export default function ChatListScreen() {
 
   const closeConversation = async () => {
     try {
+      const curConvo = chatService.getConversation(curConversationId);
+
+      const curUnread = chatService.getUnreadCount(curConvo, currentUserId);
+
+      if (curUnread > 0) {
+        decrementUnreadByConversation(curConversationId, curUnread);
+      }
+
       await chatService.deleteConversationAndMessages(curConversationId);
 
       setModalVisible(false);

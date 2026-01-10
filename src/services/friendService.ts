@@ -1,7 +1,11 @@
 // src/services/friendService.ts
 import { authService } from './authService';
 import { dataService } from './dataService';
-import { client } from './amplifyConfig';
+import { generateClient } from 'aws-amplify/api';
+import type { Schema } from '../../amplify/data/resource';
+
+
+const client = generateClient<Schema>();
 
 export const friendService = {
   // Keep your existing sendFriendRequest method as is

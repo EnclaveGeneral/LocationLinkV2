@@ -9,6 +9,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { WebSocketService } from '../services/websocketService';
+import { chatService } from '@/services/chatService';
 import { authService } from '../services/authService';
 import { dataService } from '../services/dataService';
 import { getUrl } from 'aws-amplify/storage';
@@ -23,6 +24,8 @@ interface SubscriptionContextType {
   sentRequests: FriendRequest[];
   friends: UserWithAvatar[];
   friendsOnline: number;
+  unreadMessages: number;
+  decrementUnreadByConversation: (conversationId: string, amount: number) => void;
   friendsMap: Map<string, UserWithAvatar>;
   forceReload: () => Promise<void>;
   isWebSocketConnected: boolean;
@@ -34,6 +37,8 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
   sentRequests: [],
   friends: [],
   friendsOnline: 0,
+  unreadMessages: 0,
+  decrementUnreadByConversation: () => {},
   friendsMap: new Map(),
   forceReload: async () => {},
   isWebSocketConnected: false,
@@ -46,6 +51,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [friends, setFriends] = useState<UserWithAvatar[]>([]);
   const [friendsMap, setFriendsMap] = useState<Map<string, UserWithAvatar>>(new Map());
   const [friendsOnline, setFriendsOnline] = useState<number>(0);
+  const [unreadMessages, setUnreadMessages] = useState<number>(0);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
@@ -98,6 +104,33 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log(`📊 Context state updated: {"online": ${onlineCount}, "total": ${newFriends.length}}`);
   }, []);
 
+
+  // =====================
+  // Fetch total number of Unread messages
+  // =====================
+  const fetchUnreadMessages = useCallback(async (userId: string) => {
+
+    try {
+      const allConversations = await chatService.getUserConversations(userId);
+
+      // calculate the total number of unread messages
+      let total = 0;
+      allConversations.forEach(conv => {
+        userId === conv.participant1Id
+          ? (total += conv.unreadCountUser1 ?? 0)
+          : (total += conv.unreadCountUser2 ?? 0)
+      });
+
+      setUnreadMessages(total);
+    } catch (error : any) {
+      console.log('Error loading unread: ', error);
+    }
+  }, []);
+
+  const decrementUnreadByConversation = (conversationId: string, amount: number) => {
+    setUnreadMessages(prev => Math.max(0, prev - amount));
+  };
+
   // ============================================
   // LOAD ALL DATA (parallel for performance)
   // ============================================
@@ -135,6 +168,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setPendingRequests(pendingResult);
       setSentRequests(sentResult);
 
+
       // Step 2: Get friend IDs
       const friendIds = friendshipsResult.map(f =>
         f.userId === userId ? f.friendId : f.userId
@@ -152,6 +186,9 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       });
 
       console.log(`📥 Step 4 complete (${Date.now() - startTime}ms): ${friendsData.length} friends loaded`);
+
+      // Fetch all unread message count
+      fetchUnreadMessages(userId);
 
       // Update state with friends (without avatars first for speed)
       updateFriendsState(friendsData);
@@ -333,6 +370,15 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
         });
 
+        // Listen for changes on the number of unread messages
+        wsService.on('conversation_update', (data: any) => {
+          console.log('📬 Conversation update for badge:', data);
+
+          if (data.incrementUnread) {
+            setUnreadMessages(prev => prev + 1);
+          }
+        });
+
         // Friend request deleted (rejected/cancelled)
         wsService.on('friendRequestDeleted', (data: any) => {
           console.log('🗑️ Friend request deleted:', data);
@@ -341,6 +387,8 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           setPendingRequests(prev => prev.filter(r => r.id !== data.requestId));
           setSentRequests(prev => prev.filter(r => r.id !== data.requestId));
         });
+
+        // Update unread number of message
 
         // Error handling
         wsService.on('error', (error: any) => {
@@ -386,6 +434,8 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       sentRequests,
       friends,
       friendsOnline,
+      unreadMessages,
+      decrementUnreadByConversation,
       friendsMap,
       forceReload,
       isWebSocketConnected,
