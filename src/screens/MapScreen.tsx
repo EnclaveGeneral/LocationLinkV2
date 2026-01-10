@@ -124,6 +124,7 @@ const FriendMarker = ({ friend, coordinate, color, reloadVersion }: any) => {
       title={friend.username}
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksViewChangesRef.current}
+      zIndex={1}
     >
       {friend.avatarUrl ? (
         <View style={[styles.friendMarker, { backgroundColor: 'transparent' }]}>
@@ -180,6 +181,7 @@ const UserMarker = React.memo(({
       coordinate={coordinate as any}
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksViewChanges}
+      zIndex={1000}
     >
       <View style={[styles.userMarker, { backgroundColor: theme.userMarkerBg }]}>
         <View style={[
