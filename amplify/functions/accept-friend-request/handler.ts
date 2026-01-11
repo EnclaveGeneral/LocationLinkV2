@@ -64,7 +64,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
 
     console.log('Using tables:', { userTable, friendRequestTable, friendTable });
 
-    // 1. Get the friend request
+    // ============================================
+    // 1. GET THE FRIEND REQUEST
+    // ============================================
     console.log('📥 Fetching friend request...');
     const requestResult = await ddbDocClient.send(new GetCommand({
       TableName: friendRequestTable,
@@ -89,20 +91,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
       };
     }
 
-    // 2. Update request status to ACCEPTED
-    console.log('📝 Updating request status to ACCEPTED...');
-    await ddbDocClient.send(new UpdateCommand({
-      TableName: friendRequestTable,
-      Key: { id: requestId },
-      UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': 'ACCEPTED',
-        ':updatedAt': new Date().toISOString()
-      }
-    }));
-
-    // 3. Create Friend record
+    // ============================================
+    // 2. CREATE FRIENDSHIP RECORD
+    // ============================================
     console.log('👥 Creating friendship record...');
     const friendshipId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     await ddbDocClient.send(new PutCommand({
@@ -120,7 +111,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
 
     console.log('✅ Friendship record created:', friendshipId);
 
-    // 4. Update BOTH users' friends arrays
+    // ============================================
+    // 3. UPDATE BOTH USERS' FRIENDS ARRAYS
+    // ============================================
     console.log('📝 Updating users friends arrays...');
     const [senderResult, receiverResult] = await Promise.all([
       ddbDocClient.send(new GetCommand({
@@ -175,7 +168,7 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
     console.log('✅ Users updated with new friend');
 
     // ============================================
-    // 5. SEND WEBSOCKET NOTIFICATIONS (FIXED)
+    // 4. SEND WEBSOCKET NOTIFICATIONS
     // ============================================
     if (connectionTable && websocketEndpoint) {
       const apiGatewayClient = new ApiGatewayManagementApiClient({
@@ -194,8 +187,19 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
         }))
       ]);
 
-      // ✅ FIXED: Send complete data to BOTH users
       const notifications = [];
+
+      // Complete event data to send to both users
+      const acceptedEventData = {
+        type: 'FRIEND_REQUEST_ACCEPTED',
+        data: {
+          requestId: requestId,
+          senderId: request.senderId,
+          senderUsername: request.senderUsername,
+          receiverId: request.receiverId,
+          receiverUsername: request.receiverUsername,
+        }
+      };
 
       // Notify sender (person who sent the request)
       if (senderConnections.Item?.connectionIds) {
@@ -203,16 +207,7 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
           notifications.push(
             apiGatewayClient.send(new PostToConnectionCommand({
               ConnectionId: connectionId,
-              Data: JSON.stringify({
-                type: 'FRIEND_REQUEST_ACCEPTED',
-                data: {
-                  requestId: requestId,
-                  senderId: request.senderId,
-                  senderUsername: request.senderUsername,
-                  receiverId: request.receiverId,
-                  receiverUsername: request.receiverUsername,
-                }
-              })
+              Data: JSON.stringify(acceptedEventData)
             })).catch(err => console.error('Error notifying sender:', err))
           );
         }
@@ -224,35 +219,30 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
           notifications.push(
             apiGatewayClient.send(new PostToConnectionCommand({
               ConnectionId: connectionId,
-              Data: JSON.stringify({
-                type: 'FRIEND_REQUEST_ACCEPTED',
-                data: {
-                  requestId: requestId,
-                  senderId: request.senderId,
-                  senderUsername: request.senderUsername,
-                  receiverId: request.receiverId,
-                  receiverUsername: request.receiverUsername,
-                }
-              })
+              Data: JSON.stringify(acceptedEventData)
             })).catch(err => console.error('Error notifying receiver:', err))
           );
         }
       }
 
       // Send FRIEND_REQUEST_DELETED to both users
+      const deletedEventData = {
+        type: 'FRIEND_REQUEST_DELETED',
+        data: {
+          requestId: requestId,
+          senderId: request.senderId,
+          senderUsername: request.senderUsername,
+          receiverId: request.receiverId,
+          receiverUsername: request.receiverUsername,
+        }
+      };
+
       if (senderConnections.Item?.connectionIds) {
         for (const connectionId of senderConnections.Item.connectionIds) {
           notifications.push(
             apiGatewayClient.send(new PostToConnectionCommand({
               ConnectionId: connectionId,
-              Data: JSON.stringify({
-                type: 'FRIEND_REQUEST_DELETED',
-                data: {
-                  requestId: requestId,
-                  senderId: request.senderId,
-                  senderUsername: request.senderUsername,
-                }
-              })
+              Data: JSON.stringify(deletedEventData)
             })).catch(err => console.error('Error notifying sender deletion:', err))
           );
         }
@@ -263,14 +253,7 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
           notifications.push(
             apiGatewayClient.send(new PostToConnectionCommand({
               ConnectionId: connectionId,
-              Data: JSON.stringify({
-                type: 'FRIEND_REQUEST_DELETED',
-                data: {
-                  requestId: requestId,
-                  senderId: request.senderId,
-                  senderUsername: request.senderUsername,
-                }
-              })
+              Data: JSON.stringify(deletedEventData)
             })).catch(err => console.error('Error notifying receiver deletion:', err))
           );
         }
@@ -280,7 +263,9 @@ export const handler: Schema['acceptFriendRequestLambda']['functionHandler'] = a
       console.log('✅ WebSocket notifications sent');
     }
 
-    // 6. Delete the friend request
+    // ============================================
+    // 5. DELETE THE FRIEND REQUEST
+    // ============================================
     console.log('🗑️ Deleting friend request...');
     await ddbDocClient.send(new DeleteCommand({
       TableName: friendRequestTable,

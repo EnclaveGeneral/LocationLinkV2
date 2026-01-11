@@ -127,6 +127,7 @@ export default function RequestsScreen() {
       await friendService.acceptFriendRequest(request.id);
 
       console.log('✅ Request accepted, forcing reload...');
+
       await forceReload();
 
       setModalContent({

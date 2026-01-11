@@ -335,31 +335,42 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
 
         // ✅ FIX: Friend added - also clear related requests
-        wsService.on('friendAdded', async (data: any) => {
-          console.log('👥 Friend added via WebSocket:', data);
+        wsService.on('friendAdded', async (message: any) => {
+          console.log('👥 Friend added via WebSocket:', message);
           if (!mounted) return;
 
+          const data = message.data;
           const newFriendId = data.userId === currentUserIdRef.current ? data.friendId : data.userId;
 
-          const newFriend = await dataService.getUser(newFriendId);
-          if (newFriend && mounted) {
-            // Add to friends list
-            setFriends(prev => {
-              if (prev.some(f => f.id === newFriend.id)) return prev;
-              const newFriends = [...prev, newFriend];
-              updateFriendsState(newFriends);
-              return newFriends;
-            });
+          // ✅ Add validation
+          if (!newFriendId || typeof newFriendId !== 'string') {
+            console.error('❌ Invalid friend ID from FRIEND_ADDED event:', message);
+            return;
+          }
 
-            // ✅ FIX: Clear any pending/sent requests involving this friend
-            setPendingRequests(prev => prev.filter(r =>
-              r.senderId !== newFriendId && r.receiverId !== newFriendId
-            ));
-            setSentRequests(prev => prev.filter(r =>
-              r.senderId !== newFriendId && r.receiverId !== newFriendId
-            ));
+          try {
+            const newFriend = await dataService.getUser(newFriendId);
+            if (newFriend && mounted) {
+              // Add to friends list
+              setFriends(prev => {
+                if (prev.some(f => f.id === newFriend.id)) return prev;
+                const newFriends = [...prev, newFriend];
+                updateFriendsState(newFriends);
+                return newFriends;
+              });
 
-            console.log(`✅ Friend ${newFriend.username} added, related requests cleared`);
+              // Clear any pending/sent requests involving this friend
+              setPendingRequests(prev => prev.filter(r =>
+                r.senderId !== newFriendId && r.receiverId !== newFriendId
+              ));
+              setSentRequests(prev => prev.filter(r =>
+                r.senderId !== newFriendId && r.receiverId !== newFriendId
+              ));
+
+              console.log(`✅ Friend ${newFriend.username} added, related requests cleared`);
+            }
+          } catch (error) {
+            console.error('❌ Error fetching new friend:', error);
           }
         });
 

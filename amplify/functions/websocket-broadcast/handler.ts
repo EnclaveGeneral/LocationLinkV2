@@ -16,9 +16,6 @@ export const handler = async (event: any) => {
   const friendRequestTable = process.env.FRIEND_REQUEST_TABLE_NAME;
   const wsEndpoint = process.env.WEBSOCKET_ENDPOINT;
 
-
-  // Bruh this error checked caused me so much pain and grief wtf
-  // Extra redundant type check, ensrue none of the table is Null() or Undefined ~ ~ ~ Nefer C6R1
   if (!connectionsTable) {
     console.error('❌ Missing environment variable: CONNECTIONS_TABLE');
     return;
@@ -43,7 +40,6 @@ export const handler = async (event: any) => {
     console.error('❌ Missing environment variable: FRIEND_REQUEST_TABLE');
     return;
   }
-
 
   const apiGateway = new ApiGatewayManagementApiClient({
     endpoint: wsEndpoint
@@ -138,9 +134,10 @@ async function handleFriendUpdate(
     console.log('👥 New friendship created');
 
     // Notify both users of the newly established relationship
-    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
+    const userIds = [newImage.userId, newImage.friendId];
+    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
 
-    const senderMessage = {
+    const message = {
       type: 'FRIEND_ADDED',
       data: {
         userId: newImage.userId,
@@ -150,27 +147,13 @@ async function handleFriendUpdate(
       }
     };
 
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
-
-    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
-
-    const receiverMessage = {
-      type: 'FRIEND_ADDED',
-      data: {
-        userId: newImage.userId,
-        friendId: newImage.friendId,
-        userUsername: newImage.userUsername,
-        friendUsername: newImage.friendUsername,
-      }
-    }
-
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
   }
 
   if (record.eventName === 'REMOVE' && oldImage) {
     console.log('💔 Friendship removed');
 
-    // Notify both ends of the relationship of the termination.
+    // Notify both ends of the relationship of the termination
     const userIds = [oldImage.userId, oldImage.friendId];
     const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
 
@@ -195,7 +178,7 @@ async function handleFriendRequestUpdate(
   const newImage = record.dynamodb.NewImage ? unmarshall(record.dynamodb.NewImage) : null;
   const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : null;
 
-  // New friend request created, notify both party of the new friend request
+  // New friend request created, notify both parties
   if (record.eventName === 'INSERT' && newImage) {
     console.log('📬 New friend request created');
 
@@ -215,7 +198,7 @@ async function handleFriendRequestUpdate(
 
     await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
 
-    // Notify Sender as well that the friend request was sent
+    // Notify sender that the friend request was sent
     const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
     const senderMessage = {
       type: 'FRIEND_REQUEST_SENT',
@@ -230,72 +213,36 @@ async function handleFriendRequestUpdate(
     await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
   }
 
-  // If the friend request is ACCEPTED. NOTIFY BOTH PARTIES!
-  if (record.eventName === 'MODIFY' && newImage && oldImage) {
-    if (oldImage.status === 'PENDING' && newImage.status === 'ACCEPTED') {
-      console.log('✅ Friend request accepted');
+  // ❌ REMOVED: Friend request ACCEPTED broadcast
+  // The accept-friend-request Lambda now handles ACCEPTED notifications directly
+  // No need to broadcast on status update since we skip that step entirely
 
-      // Notify BOTH Sender && Receiver
-      const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.senderId]);
-
-      const senderMessage = {
-        type: 'FRIEND_REQUEST_ACCEPTED',
-        data: {
-          requestId: newImage.id,
-          receiverId: newImage.receiverId,
-          receiverUsername: newImage.receiverUsername,
-        }
-      };
-
-      await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
-
-      const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [newImage.receiverId]);
-
-      const receiverMessage = {
-        type: 'FRIEND_REQUEST_ACCEPTED',
-        data: {
-          requestId: newImage.id,
-          receiverId: newImage.senderId,
-          receiverUsername: newImage.senderUsername,
-        }
-      }
-
-      await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
-    }
-  }
-
+  // Friend request deleted (rejected or withdrawn)
   if (record.eventName === 'REMOVE' && oldImage) {
     console.log('🗑️ Friend request deleted');
 
-    // Notify Both Sender and Receiver that the friend request was declined / withdrawn
-    const senderConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [oldImage.senderId]);
+    // Notify both sender and receiver with complete data
+    const userIds = [oldImage.senderId, oldImage.receiverId];
+    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, userIds);
 
-    const senderMessage = {
-      type: 'FRIEND_REQUEST_DELETED',
-      data: {
-        requestId: oldImage.id,
-        receiverId: oldImage.receiverId,
-        receiverUsername: oldImage.receiverUsername,
-      }
-    };
-
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, senderConnections, senderMessage);
-
-    const receiverConnections = await getConnectionsForUsers(ddbDocClient, connectionsTable, [oldImage.receiverId]);
-
-    const receiverMessage = {
+    const message = {
       type: 'FRIEND_REQUEST_DELETED',
       data: {
         requestId: oldImage.id,
         senderId: oldImage.senderId,
         senderUsername: oldImage.senderUsername,
+        receiverId: oldImage.receiverId,
+        receiverUsername: oldImage.receiverUsername,
       }
-    }
+    };
 
-    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, receiverConnections, receiverMessage);
-
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
   }
 }
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
 
 async function getFriendIds(
   ddbDocClient: DynamoDBDocumentClient,

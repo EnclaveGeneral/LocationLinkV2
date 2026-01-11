@@ -86,6 +86,8 @@ export const friendService = {
   // UPDATED: Use Lambda function for accepting friend requests
   async acceptFriendRequest(requestId: string) {
     try {
+      console.log ('Requesting ID: ' + requestId);
+
       // Call the Lambda mutation
       const { data, errors } = await client.mutations.acceptFriendRequestLambda({
         requestId: requestId,
