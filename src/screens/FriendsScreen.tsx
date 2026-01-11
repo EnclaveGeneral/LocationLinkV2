@@ -96,7 +96,17 @@ export default function FriendsScreen() {
       await Promise.race([removePromise, timeoutPromise]);
 
       console.log('✅ Friend removed successfully');
+
+      // Now that we have removed that friend, check to see if we have a conversation open with that friend
+      // If yes, we need to delete it asap.
+      const curConversation = await chatService.getOrCreateConversation(user.userId, friend.id);
+
+      if (curConversation?.conversationId) {
+        await chatService.deleteConversationAndMessages(curConversation.conversationId);
+      }
+
       setModal("Friend Removed", `You have removed ${removedFriend} from your friendlist`, 'success');
+      onRefresh();
       setSelectedFriend(null);
       setModalVisible(true);
     } catch (error: any) {

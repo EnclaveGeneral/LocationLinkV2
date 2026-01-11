@@ -27,11 +27,10 @@ export default function CustomModal({
 }: CustomModalProps) {
 
   const handleConfirm = () => {
-    if (onConfirm) {
-      onConfirm();
-    } else {
-      onClose();
+    if (type === 'confirm') {
+      onConfirm?.();
     }
+    onClose();
   }
 
   const handleAction = () => {

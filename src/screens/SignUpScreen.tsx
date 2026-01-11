@@ -104,6 +104,7 @@ export default function SignUpScreen() {
     try {
       await authService.signUp(email, password, username, phoneNumber);
 
+      setShowConfirm(true);
     } catch (error: any) {
       showModal("Registration Error", error.message || "There is an error during registration", "error");
     } finally {

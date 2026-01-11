@@ -12,14 +12,21 @@ import {
   Dimensions
 } from 'react-native';
 import { friendService } from '../services/friendService';
-import { authService } from '../services/authService';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from "expo-linear-gradient";
 import CustomModal from '@/components/modal';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 const { width } = Dimensions.get('window');
+
+type ModalContent = {
+  title: string;
+  message: string;
+  type: 'error' | 'success' | 'confirm';
+  onConfirm?: () => void;
+};
 
 export default function RequestsScreen() {
   const [searchUsername, setSearchUsername] = useState('');
@@ -27,21 +34,20 @@ export default function RequestsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSent, setShowSent] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalContent, setModalContent] = useState({
+  const [modalContent, setModalContent] = useState<ModalContent>({
     title: '',
     message: '',
-    type: 'error' as 'error' | 'success' | 'confirm'
-  })
+    type: 'error' as 'error' | 'success' | 'confirm',
+  });
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
+
+  // Used to determine if we are removing a friend or not
+  const [isRemoving, setIsRemoving] = useState(false);
 
   // Read from context
   const { pendingRequests, sentRequests, forceReload } = useSubscriptions();
 
   console.log('📬 RequestsScreen rendering - Pending:', pendingRequests.length, 'Sent:', sentRequests.length);
-
-  const setModal = (title: string, message: string, type: 'error' | 'success' | 'confirm' = 'error') => {
-    setModalContent({title, message, type});
-  }
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -52,7 +58,11 @@ export default function RequestsScreen() {
 
   const sendFriendRequest = async () => {
     if (!searchUsername.trim()) {
-      setModal("Request Not Sent", "Please enter a username to send friend request", "error");
+      setModalContent({
+        type: 'error',
+        title: 'No User Entered',
+        message: 'Please enter a valid username',
+      });
       setModalVisible(true);
       return;
     }
@@ -62,70 +72,128 @@ export default function RequestsScreen() {
       console.log('📤 Sending friend request to:', searchUsername);
       await friendService.sendFriendRequest(searchUsername.trim());
 
-      setModal("Request Sent", "Your request has been successfully sent!", "success");
+      setModalContent({
+        type: 'success',
+        title: 'Friend Request Sent',
+        message: `Your friend request to ${searchUsername} has been sent successfully`
+      });
       setModalVisible(true);
       setSearchUsername('');
     } catch (error: any) {
-      console.error('Error sending request:', error);
-      setModal("Request Not Sent", `Error during sending request: ${error}`, "error");
+      console.log('Error sending request:', error);
+      setModalContent({
+        type: 'error',
+        title: 'Request Failed To Send',
+        message: error.message || 'An error(s) has occured while attempting to send your friend request'
+      })
       setModalVisible(true);
     } finally {
       setLoading(false);
     }
   };
 
+  const readyToAccept = async (request: any) => {
+    setModalContent({
+      type: 'confirm',
+      title: `Accept friend request?`,
+      message: `Confirm to accept friend request from ${request.senderUsername}`,
+      onConfirm: () => {
+        acceptRequest(request);
+      }
+    });
+    setModalVisible(true);
+    return;
+  }
+
+  const readyToReject = async (request: any) => {
+    setModalContent({
+      type: 'confirm',
+      title: `Accept friend request?`,
+      message: `Confirm to accept friend request from ${request.senderUsername}`,
+      onConfirm: () => {
+        rejectRequest(request);
+      }
+    });
+    setModalVisible(true);
+    return;
+  }
+
   const acceptRequest = async (request: any) => {
     try {
+
+      setModalVisible(false);
+
       console.log('✅ Accepting request from:', request.senderUsername);
       await friendService.acceptFriendRequest(request.id);
 
       console.log('✅ Request accepted, forcing reload...');
       await forceReload();
 
-      setModal("Request accepted!", `You are now friends with ${request.senderUsername}!`, 'success');
+      setModalContent({
+        type: 'success',
+        title: 'Request accepted',
+        message: `You are now friends with ${request.senderUsername}`
+      });
       setModalVisible(true);
-    } catch (error) {
-      console.error('Error accepting request:', error);
+    } catch (error: any) {
 
-      setModal('Failed to accept request:', `An error occured during accepting request: ${error}`, 'error');
+      console.log('Error accepting request:', error);
+
+      setModalContent({
+        type: 'error',
+        title: 'Error accepting request',
+        message: error.message || 'An error(s) has occured while attempting to accept request'
+      });
       setModalVisible(true);
     }
   };
 
   const rejectRequest = async (request: any) => {
     try {
+
+      setModalVisible(false);
+
       console.log('❌ Rejecting request from:', request.senderUsername);
       await friendService.rejectFriendRequest(request.id);
+
+      setModalContent({
+        type: 'success',
+        title: 'Request rejected',
+        message: `You rejected friend request from ${request.senderUsername}`
+      });
+      setModalVisible(true);
 
       console.log('✅ Request rejected, forcing reload...');
       await forceReload();
 
-    } catch (error) {
-      console.error('Error rejecting request:', error);
-      setModal("Reject Failure", "Failed To Reject Request", "error");
+    } catch (error: any) {
+      console.log('Error rejecting request:', error);
+
+      setModalContent({
+        type: 'error',
+        title: 'Error rejecting request',
+        message: error.message || 'An error(s) has occured while attempting to reject request'
+      });
       setModalVisible(true);
     }
   };
 
   const cancelSentRequest = async (request: any) => {
     try {
+      setIsRemoving(true);
+
       console.log('🚫 Cancelling request to:', request.receiverUsername);
       await friendService.rejectFriendRequest(request.id);
 
       console.log('✅ Request cancelled, forcing reload...');
       await forceReload();
 
+      setIsRemoving(false);
+    } catch (error: any) {
+      console.log('Error cancelling request:', error);
       setModalContent({
-        title: 'Request cancelled',
-        message: 'Your friend request has been cancelled successfully!',
-        type: 'confirm',
-      })
-      setModalVisible(true);
-    } catch (error) {
-      console.error('Error cancelling request:', error);
-      setModalContent({
-        title: 'Failed To Cancel',
-        message: 'Failed to cancel your request',
+        title: 'Error cancel sent request',
+        message: error.message || 'An error(s) has occured while attempting to cancel sent request',
         type: 'error'
       });
       setModalVisible(true);
@@ -135,7 +203,7 @@ export default function RequestsScreen() {
   const renderPendingRequest = ({ item }: any) => (
     <View style={styles.requestItem}>
       <View style={styles.requestInfo}>
-        <Ionicons name="person-add" size={width * 0.055} color="#FF9800" />
+        <Ionicons name="person-add" size={width * 0.055} color="#4CAF50" />
         <View style={styles.requestText}>
           <Text style={styles.requestUsername}>{item.senderUsername || 'Unknown'}</Text>
           <Text style={styles.requestSubtext}>Wants to be your friend</Text>
@@ -149,7 +217,7 @@ export default function RequestsScreen() {
           style={[styles.button, styles.acceptButton]}
           onPress={() => {
             setSelectedRequest(item);
-            setModalVisible(true);
+            readyToAccept(item);
           }}
         >
           <Ionicons name="checkmark" size={width * 0.045} color="white" />
@@ -167,7 +235,7 @@ export default function RequestsScreen() {
   const renderSentRequest = ({ item }: any) => (
     <View style={styles.requestItem}>
       <View style={styles.requestInfo}>
-        <Ionicons name="send" size={width * 0.055} color="#2196F3" />
+        <MaterialCommunityIcons name="account-question" size={width * 0.055} color="#9420ceff" />
         <View style={styles.requestText}>
           <Text style={styles.requestUsername}>{item.receiverUsername || 'Unknown'}</Text>
           <Text style={styles.requestSubtext}>Pending</Text>
@@ -177,10 +245,14 @@ export default function RequestsScreen() {
         </View>
       </View>
       <TouchableOpacity
-        style={[styles.button, styles.cancelButton]}
+        style={styles.button}
         onPress={() => cancelSentRequest(item)}
       >
-        <Text style={styles.cancelText}>Cancel</Text>
+        {isRemoving ? (
+          <ActivityIndicator size='small' color="#f80606ff" />
+        ) : (
+          <Ionicons name="close-circle" size={width * 0.065} color="#f80606ff" />
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -205,7 +277,7 @@ export default function RequestsScreen() {
               colors={
                     loading
                       ? ['#a8a4a4ef', '#a8a4a4ef', '#a8a4a4ef']
-                      : ['#1b3decff', '#9420ceff', '#4709b1ff']
+                      : ['#9420ceff', '#9420ceff', '#9420ceff']
               }
               locations={[0, 0.25, 0.75]}
               start={{x: 0, y: 0}}
@@ -264,16 +336,11 @@ export default function RequestsScreen() {
 
       <CustomModal
         visible={modalVisible}
-        title={'Warning'}
-        message={'Are you sure you want to accept this friend request?'}
-        type={'confirm'}
+        title={modalContent.title}
+        message={modalContent.message}
+        type={modalContent.type}
         onClose={() => setModalVisible(false)}
-        onConfirm={() => {
-          if (selectedRequest) {
-            acceptRequest(selectedRequest);
-            setModalVisible(false);
-          }
-        }}
+        onConfirm={modalContent.onConfirm}
       />
     </View>
   );
@@ -348,7 +415,7 @@ const styles = StyleSheet.create({
   },
   badge: {
     marginLeft: width * 0.011,         // was: 5
-    backgroundColor: '#FF9800',
+    backgroundColor: '#4CAF50',
     borderRadius: width * 0.022,       // was: 10
     paddingHorizontal: width * 0.013,  // was: 6
     paddingVertical: width * 0.0045    // was: 2
@@ -407,12 +474,6 @@ const styles = StyleSheet.create({
   },
   rejectButton: {
     backgroundColor: '#f44336'
-  },
-  cancelButton: {
-    paddingHorizontal: width * 0.033,  // was: 15
-    paddingVertical: width * 0.018,    // was: 8
-    borderRadius: width * 0.033,       // was: 15
-    backgroundColor: '#f0f0f0'
   },
   cancelText: {
     color: '#666',
