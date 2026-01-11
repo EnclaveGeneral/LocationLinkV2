@@ -224,7 +224,7 @@ export default function RequestsScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.rejectButton]}
-          onPress={() => rejectRequest(item)}
+          onPress={() => readyToReject(item)}
         >
           <Ionicons name="close" size={width * 0.045} color="white" />
         </TouchableOpacity>
@@ -300,7 +300,7 @@ export default function RequestsScreen() {
           onPress={() => setShowSent(false)}
         >
           <Text style={[styles.tabText, !showSent && styles.activeTabText]}>
-            Received ({pendingRequests.length})
+            Received
           </Text>
           {pendingRequests.length > 0 && (
             <View style={styles.badge}>

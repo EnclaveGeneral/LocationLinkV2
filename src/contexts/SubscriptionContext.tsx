@@ -172,26 +172,51 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
 
       // Step 2: Get friend IDs
-      const friendIds = friendshipsResult.map(f =>
-        f.userId === userId ? f.friendId : f.userId
-      );
+      const friendIds = friendshipsResult
+        .map(f => {
+          // Defensive check - ensure friendship record has required fields
+          if (!f.userId || !f.friendId) {
+            console.warn('⚠️ Invalid friendship record:', f);
+            return null;
+          }
+
+          // If f.userId is the current user, return friendId, otherwise return userId
+          if (f.userId === userId) {
+            return f.friendId;
+          } else if (f.friendId === userId) {
+            return f.userId;
+          }
+
+          // If neither matches (shouldn't happen), log warning and return null
+          console.warn('⚠️ Friendship record does not involve current user:', f);
+          return null;
+        })
+        .filter((id): id is string =>
+          id !== null && id !== undefined && id.trim() !== ''
+        );
+
+      console.log(`📥 Step 2 complete: ${friendIds.length} valid friend IDs extracted`);
 
       // Step 3: Fetch all friend user data in parallel
-      const validFriendIds = friendIds.filter((id): id is string =>
-        id !== null && id !== undefined && id.trim() !== ''
+      const friendDataPromises = friendIds.map(id =>
+        dataService.getUser(id).catch(err => {
+          console.error(`❌ Error fetching user ${id}:`, err);
+          return null;
+        })
       );
 
-      const friendDataPromises = validFriendIds.map(id => dataService.getUser(id));
       const friendDataResults = await Promise.allSettled(friendDataPromises);
 
       const friendsData: User[] = [];
-      friendDataResults.forEach(result => {
+      friendDataResults.forEach((result, index) => {
         if (result.status === 'fulfilled' && result.value !== null) {
           friendsData.push(result.value);
+        } else if (result.status === 'rejected') {
+          console.error(`❌ Failed to fetch friend ${friendIds[index]}:`, result.reason);
         }
       });
 
-      console.log(`📥 Step 4 complete (${Date.now() - startTime}ms): ${friendsData.length} friends loaded`);
+      console.log(`📥 Step 3 complete (${Date.now() - startTime}ms): ${friendsData.length} friends loaded`);
 
       // Fetch all unread message count
       fetchUnreadMessages(userId);
@@ -224,6 +249,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log('🔄 Force reload triggered');
     await loadAllData();
   }, [loadAllData]);
+
 
   // ============================================
   // INITIALIZATION & WEBSOCKET SETUP
@@ -388,26 +414,51 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           if (mounted) setSentRequests(requests);
         });
 
-        // ✅ FIX: Friend request accepted - clear from sent, add to friends
+        // Friend request accepted - clear from sent, add to friends
         wsService.on('friendRequestAccepted', async (data: any) => {
           console.log('✅ Friend request accepted:', data);
           if (!mounted) return;
 
-          // Remove from sent requests
+          // Remove from sent requests (if I was the sender)
           setSentRequests(prev => prev.filter(r => r.id !== data.requestId));
 
-          // Add new friend
-          const newFriendId = data.receiverId;
-          const newFriend = await dataService.getUser(newFriendId);
-          if (newFriend && mounted) {
-            setFriends(prev => {
-              if (prev.some(f => f.id === newFriend.id)) return prev;
-              const newFriends = [...prev, newFriend];
-              updateFriendsState(newFriends);
-              return newFriends;
-            });
+          // Remove from pending requests (if I was the receiver)
+          setPendingRequests(prev => prev.filter(r => r.id !== data.requestId));
+
+          // If I'm the receiver, the new friend is the sender
+          // If I'm the sender, the new friend is the receiver
+          const newFriendId = data.receiverId === currentUserIdRef.current
+            ? data.senderId  // I'm the receiver, friend is the sender
+            : data.receiverId; // I'm the sender, friend is the receiver
+
+          if (!newFriendId) {
+            console.error('❌ Cannot determine new friend ID from:', data);
+            return;
+          }
+
+          console.log(`👥 Adding new friend: ${newFriendId}`);
+
+          // Fetch the new friend's data
+          try {
+            const newFriend = await dataService.getUser(newFriendId);
+            if (newFriend && mounted) {
+              setFriends(prev => {
+                // Don't add duplicates
+                if (prev.some(f => f.id === newFriend.id)) {
+                  console.log('⚠️ Friend already in list');
+                  return prev;
+                }
+                const newFriends = [...prev, newFriend];
+                updateFriendsState(newFriends);
+                console.log(`✅ Friend ${newFriend.username} added to list`);
+                return newFriends;
+              });
+            }
+          } catch (error) {
+            console.error('❌ Error fetching new friend data:', error);
           }
         });
+
 
         // Listen for changes on the number of unread messages
         wsService.on('conversation_update', (data: any) => {
