@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Image
 } from 'react-native';
+import { router } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { chatService } from '../services/chatService';
 import { authService } from '../services/authService';
@@ -86,6 +87,15 @@ export default function ChatScreen({ route }: any) {
         headerStyle: { backgroundColor: '#A910F5' },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: 'bold' },
+        // ✅ Add explicit back button
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ marginRight: width * 0.06}}
+          >
+            <Ionicons name="arrow-back" size={width * 0.09} color="#fff" />
+          </TouchableOpacity>
+        ),
         headerTitle: () => (
           <View style={styles.headerContainer}>
             {friendAvatar ? (
@@ -104,6 +114,7 @@ export default function ChatScreen({ route }: any) {
       });
     }
   }, [navigation, friendUsername, friendAvatar]);
+
 
   // ============================================
   // INITIALIZATION

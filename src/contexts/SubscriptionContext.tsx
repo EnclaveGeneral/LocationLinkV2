@@ -177,7 +177,11 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       );
 
       // Step 3: Fetch all friend user data in parallel
-      const friendDataPromises = friendIds.map(id => dataService.getUser(id));
+      const validFriendIds = friendIds.filter((id): id is string =>
+        id !== null && id !== undefined && id.trim() !== ''
+      );
+
+      const friendDataPromises = validFriendIds.map(id => dataService.getUser(id));
       const friendDataResults = await Promise.allSettled(friendDataPromises);
 
       const friendsData: User[] = [];

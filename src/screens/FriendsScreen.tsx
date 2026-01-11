@@ -99,7 +99,7 @@ export default function FriendsScreen() {
 
       // Now that we have removed that friend, check to see if we have a conversation open with that friend
       // If yes, we need to delete it asap.
-      const curConversation = await chatService.getOrCreateConversation(user.userId, friend.id);
+      const curConversation = await chatService.getOneConversation(user.userId, friend.id);
 
       if (curConversation?.conversationId) {
         await chatService.deleteConversationAndMessages(curConversation.conversationId);

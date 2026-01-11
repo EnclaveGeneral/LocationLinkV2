@@ -45,6 +45,21 @@ export const chatService = {
     }
   },
 
+  async getOneConversation(userId1: string, userId2: string) {
+    try {
+      const [user1, user2] = [userId1, userId2].sort();
+      const conversationId = `${user1}_${user2}`;
+
+      const { data } = await client.models.ChatConversation.get({
+        conversationId: conversationId
+      });
+
+      return data;
+    } catch (error:any) {
+      throw error;
+    }
+  },
+
   // Fetch a specific conversation by ConversationId
   async getConversation(conversationId: string) {
     try {
