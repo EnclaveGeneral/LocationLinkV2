@@ -111,7 +111,7 @@ const schema = a.schema({
     ])
     .identifier(['messageId'])
     .secondaryIndexes((index) => [
-      index('conversationId'),
+      index('conversationId').sortKeys(['timestamp']),
     ]),
 
 

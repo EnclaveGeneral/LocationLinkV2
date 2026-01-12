@@ -42,11 +42,12 @@ export const handler: Schema['getMessagesQuery']['functionHandler'] = async (eve
         ':convId': conversationId
       },
       Limit: limit || 50,
-      ScanIndexForward: true,
+      ScanIndexForward: false,
     }));
 
     // ✅ Cast to ChatMessage[] with proper typing
     const messages = (response.Items || []) as ChatMessage[];
+    messages.reverse();
     console.log(`✅ Found ${messages.length} messages`);
 
     return messages; // ✅ Now returns ChatMessage[] instead of Record<string, any>[]

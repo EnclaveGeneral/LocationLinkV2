@@ -16,8 +16,8 @@ const BACKGROUND_LOCATION_TASK = 'background-location-task';
 
 // Constants
 const ACCURACY_THRESHOLD = 25; // Threshold to upgrade from Low to Balanced
-const FOREGROUND_TIME_INTERVAL = 5000; // 5 seconds
-const FOREGROUND_DISTANCE_INTERVAL = 10; // 10 meters
+const FOREGROUND_TIME_INTERVAL = 3000; // 3 seconds
+const FOREGROUND_DISTANCE_INTERVAL = 5; // 10 meters
 const BACKGROUND_TIME_INTERVAL = 30000; // 30 seconds
 const BACKGROUND_DISTANCE_INTERVAL = 50; // 50 meters
 

@@ -32,7 +32,7 @@ export class FriendLocationPollingService {
   private pollInterval: NodeJS.Timeout | null = null;
   private isPolling = false;
   private onUpdate: ((locations: FriendLocation[]) => void) | null = null;
-  private getFriendsCallback: (() => Friend[]) | null = null;
+  private getFriendsCallback: (() => Promise<Friend[]>) | null = null;
   private lastPollTime = 0;
 
   static getInstance(): FriendLocationPollingService {
@@ -49,7 +49,7 @@ export class FriendLocationPollingService {
    * @param intervalMs - Polling interval (default 3000ms = 3 seconds)
    */
   startPolling(
-    getFriends: () => Friend[],
+    getFriends: () => Promise<Friend[]>,
     onUpdate: (locations: FriendLocation[]) => void,
     intervalMs: number = 3000
   ) {
@@ -77,12 +77,12 @@ export class FriendLocationPollingService {
    * Extract location data from friends array
    * No network calls - just processes in-memory data!
    */
-  private pollFriendLocations() {
+  private async pollFriendLocations() {
     const pollStartTime = Date.now();
 
     try {
       // Get current friends from context (no network call!)
-      const friends = this.getFriendsCallback?.() || [];
+      const friends = await this.getFriendsCallback?.() || [];
 
       // Filter to only friends with valid locations who are sharing
       const friendLocations: FriendLocation[] = friends

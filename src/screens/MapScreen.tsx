@@ -33,6 +33,8 @@ import { FriendLocationPollingService } from '@/services/friendLocationPollingSe
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { Ionicons } from '@expo/vector-icons';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import type { Schema } from '../../amplify/data/resource';
+
 
 import Feather from '@expo/vector-icons/Feather';
 
@@ -40,6 +42,8 @@ import WebSocketIndicator from '../components/WebSocketIndicator';
 import CustomModal from '@/components/modal';
 
 const { width } = Dimensions.get('screen');
+
+type User = Schema['User']['type'];
 
 // ============================================
 // THEME COLORS
@@ -303,7 +307,6 @@ export default function MapScreen() {
   // Polling based location fetching service
   // ============================================
   useEffect(() => {
-    // Only start polling when map is loaded
     if (loading) {
       console.log('⏳ Waiting for map initialization before starting polling');
       return;
@@ -314,51 +317,87 @@ export default function MapScreen() {
     console.log('🔄 Starting friend location polling (3s interval)');
 
     pollingService.startPolling(
-      // Callback that returns current friends from SubscriptionContext
-      // This is MUCH better than fetching from database!
-      () => Array.from(friendsMap.values()).map(friend => ({
-        ...friend,
-        isLocationSharing: friend.isLocationSharing ?? false,
-      })),
+      // ✅ ASYNC callback - fetches fresh data from database
+      async () => {
+        const friendIds = Array.from(friendsMap.keys());
 
-      // Callback when locations update
-      (friendLocations) => {
-        // Update each friend's animated marker with new location
-        friendLocations.forEach(friendLoc => {
-          // Get the existing animated entry for this friend
-          const existingEntry = animatedFriends.get(friendLoc.id);
+        if (friendIds.length === 0) {
+          console.log('📍 No friends to poll');
+          return [];
+        }
 
-          if (existingEntry) {
-            const now = Date.now();
-            const duration = Math.min(
-              FRIEND_MAX_ANIMATION_DURATION,
-              Math.max(FRIEND_MIN_ANIMATION_DURATION, (now - existingEntry.lastTime))
-            );
+        console.log(`🔍 Polling ${friendIds.length} friend(s) from database...`);
 
-            // Update timestamp
-            existingEntry.lastTime = now;
-
-            // Animate to new position
-            animateMarker(existingEntry.coordinate, {
-              latitude: friendLoc.latitude,
-              longitude: friendLoc.longitude,
-            }, duration);
-
-            console.log(`📍 Updated ${friendLoc.username || friendLoc.id} location via polling`);
-          } else {
-            console.log(`⚠️ No animated entry for ${friendLoc.id}, will be created on next friendsMap update`);
+        const locationPromises = friendIds.map(async (friendId) => {
+          try {
+            const userData = await dataService.getUser(friendId);
+            return userData;
+          } catch (error) {
+            console.error(`❌ Failed to fetch ${friendId}:`, error);
+            return null;
           }
         });
+
+        const results = await Promise.all(locationPromises);
+
+        // ✅ Convert Nullable to optional by using || undefined
+        return results
+          .filter(user => user !== null)
+          .map(user => ({
+            id: user!.id,
+            username: user!.username,
+            latitude: user!.latitude ?? undefined,  // Convert null to undefined
+            longitude: user!.longitude ?? undefined,
+            locationUpdatedAt: user!.locationUpdatedAt ?? undefined,
+            isLocationSharing: user!.isLocationSharing ?? undefined,  // This matches Friend interface
+          }));
       },
-      3000 // Poll every 3 seconds
+
+      // Callback when locations update (same as before)
+      (friendLocations) => {
+        friendLocations.forEach(friendLoc => {
+          let existingEntry = animatedFriends.get(friendLoc.id);
+
+          // Create entry if it doesn't exist
+          if (!existingEntry) {
+            console.log(`🆕 Creating animated entry for ${friendLoc.username}`);
+            existingEntry = {
+              coordinate: new AnimatedRegion({
+                latitude: friendLoc.latitude,
+                longitude: friendLoc.longitude,
+                latitudeDelta: 0,
+                longitudeDelta: 0,
+              }),
+              lastTime: Date.now(),
+            };
+            animatedFriends.set(friendLoc.id, existingEntry);
+          }
+
+          const now = Date.now();
+          const duration = Math.min(
+            FRIEND_MAX_ANIMATION_DURATION,
+            Math.max(FRIEND_MIN_ANIMATION_DURATION, (now - existingEntry.lastTime))
+          );
+
+          existingEntry.lastTime = now;
+
+          animateMarker(existingEntry.coordinate, {
+            latitude: friendLoc.latitude,
+            longitude: friendLoc.longitude,
+          }, duration);
+
+          console.log(`📍 Updated ${friendLoc.username || friendLoc.id} location via polling`);
+        });
+      },
+      3000  // Poll every 3 seconds
     );
 
-    // Cleanup: stop polling when component unmounts
     return () => {
       console.log('🛑 Stopping friend location polling');
       pollingService.stopPolling();
     };
-  }, [loading, friendsMap]);
+  }, [loading]); // ✅ Only depends on loading (NOT friendsMap)
+
 
   // ============================================
   // APPSTATE LISTENER - CROSS-PLATFORM

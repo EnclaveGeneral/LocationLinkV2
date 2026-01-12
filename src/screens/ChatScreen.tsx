@@ -233,9 +233,15 @@ export default function ChatScreen({ route }: any) {
         .filter((msg: any) => msg !== null && msg !== undefined)
         .filter((msg: any) => msg.messageId && msg.content && msg.timestamp);
 
+
+      // Sort it based on chronological order
+      const sortedMessages = data.sort((a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
       console.log(`✅ Valid messages: ${validMessages.length}`);
 
-      setMessages(validMessages);
+      setMessages(sortedMessages);
 
       const isParticipant1 = conversation.participant1Id === userId;
       const myPreviousUnreadCount = isParticipant1
