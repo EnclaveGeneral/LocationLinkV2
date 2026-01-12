@@ -313,8 +313,30 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
         });
 
+        // WebSocket Based Location Update: Deprecated and no longer being used actively.
         // Friend location/status updates
-        wsService.on('userUpdate', (data: any) => {
+        // wsService.on('userUpdate', (data: any) => {
+        //   if (!mounted) return;
+
+        //   setFriends(prev => {
+        //     const index = prev.findIndex(f => f.id === data.id);
+        //     if (index === -1) return prev;
+
+        //     const newFriends = [...prev];
+        //     newFriends[index] = {
+        //       ...newFriends[index],
+        //       latitude: data.latitude,
+        //       longitude: data.longitude,
+        //       locationUpdatedAt: data.locationUpdatedAt,
+        //       isLocationSharing: data.isLocationSharing ?? prev[index].isLocationSharing,
+        //     };
+        //     updateFriendsState(newFriends);
+        //     return newFriends;
+        //   });
+        // });
+
+        wsService.on('userProfileUpdate', (data: any) => {
+          console.log('🖼️ Friend profile updated:', data);
           if (!mounted) return;
 
           setFriends(prev => {
@@ -324,10 +346,9 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
             const newFriends = [...prev];
             newFriends[index] = {
               ...newFriends[index],
-              latitude: data.latitude,
-              longitude: data.longitude,
-              locationUpdatedAt: data.locationUpdatedAt,
-              isLocationSharing: data.isLocationSharing ?? prev[index].isLocationSharing,
+              username: data.username,
+              avatarKey: data.avatarKey,
+              avatarUrl: data.avatarUrl,
             };
             updateFriendsState(newFriends);
             return newFriends;

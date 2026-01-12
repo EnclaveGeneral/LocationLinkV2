@@ -86,39 +86,84 @@ async function handleUserUpdate(
 
   console.log('👤 User updated:', newImage.username);
 
-  // Check if location or sharing status changed
-  const locationChanged = !oldImage ||
-    oldImage.latitude !== newImage.latitude ||
-    oldImage.longitude !== newImage.longitude ||
-    oldImage.isLocationSharing !== newImage.isLocationSharing;
+  // We No Longer Use WebSocket For Location Update
 
-  if (!locationChanged) {
-    console.log('⏭️ No relevant changes, skipping broadcast');
-    return;
-  }
+  // // Check if location or sharing status changed
+  // const locationChanged = !oldImage ||
+  //   oldImage.latitude !== newImage.latitude ||
+  //   oldImage.longitude !== newImage.longitude ||
+  //   oldImage.isLocationSharing !== newImage.isLocationSharing;
 
-  // Get all friends of this user
-  const friendIds = await getFriendIds(ddbDocClient, friendTable, newImage.id);
-  console.log(`👥 Broadcasting to ${friendIds.length} friends`);
+  // if (!locationChanged) {
+  //   console.log('⏭️ No relevant changes, skipping broadcast');
+  //   return;
+  // }
 
-  // Get active connections for these friends
-  const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, friendIds);
-  console.log(`📡 Found ${connections.length} active connections`);
+  // // Get all friends of this user
+  // const friendIds = await getFriendIds(ddbDocClient, friendTable, newImage.id);
+  // console.log(`👥 Broadcasting to ${friendIds.length} friends`);
 
-  // Broadcast update
-  const message = {
-    type: 'USER_UPDATE',
-    data: {
-      id: newImage.id,
-      username: newImage.username,
-      latitude: newImage.latitude,
-      longitude: newImage.longitude,
-      isLocationSharing: newImage.isLocationSharing,
-      locationUpdatedAt: newImage.locationUpdatedAt,
+  // // Get active connections for these friends
+  // const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, friendIds);
+  // console.log(`📡 Found ${connections.length} active connections`);
+
+  // // Broadcast update
+  // const message = {
+  //   type: 'USER_UPDATE',
+  //   data: {
+  //     id: newImage.id,
+  //     username: newImage.username,
+  //     latitude: newImage.latitude,
+  //     longitude: newImage.longitude,
+  //     isLocationSharing: newImage.isLocationSharing,
+  //     locationUpdatedAt: newImage.locationUpdatedAt,
+  //   }
+  // };
+
+  const profileChanged = oldImage && (
+    oldImage.avatarKey !== newImage.avatarKey ||
+    oldImage.avatarUrl !== newImage.avatarUrl ||
+    oldImage.username !== newImage.username
+  );
+
+  if (profileChanged) {
+    console.log('🖼️ Profile changed, broadcasting to friends');
+
+    // Get all friends of this user
+    const friendIds = await getFriendIds(ddbDocClient, friendTable, newImage.id);
+    console.log(`👥 Broadcasting profile update to ${friendIds.length} friends`);
+
+    // Get active connections for these friends
+    const connections = await getConnectionsForUsers(ddbDocClient, connectionsTable, friendIds);
+    console.log(`📡 Found ${connections.length} active connections`);
+
+    // Broadcast profile update
+    const message = {
+      type: 'USER_PROFILE_UPDATE',
+      data: {
+        id: newImage.id,
+        username: newImage.username,
+        avatarKey: newImage.avatarKey,
+        avatarUrl: newImage.avatarUrl,
+      }
+    };
+
+    await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+      return; // Exit after broadcasting profile
     }
-  };
 
-  await broadcastToConnections(apiGateway, ddbDocClient, connectionsTable, connections, message);
+    const locationChanged = !oldImage ||
+      oldImage.latitude !== newImage.latitude ||
+      oldImage.longitude !== newImage.longitude ||
+      oldImage.isLocationSharing !== newImage.isLocationSharing;
+
+    if (locationChanged) {
+      console.log('📍 Location changed - SKIPPING WebSocket broadcast (handled by polling)');
+      // ✅ NO BROADCAST - Location updates now use HTTP polling
+      // This saves ~1,200 Lambda invocations per user per hour
+      return;
+    }
+    console.log('⏭️ No relevant changes for WebSocket broadcast');
 }
 
 async function handleFriendUpdate(

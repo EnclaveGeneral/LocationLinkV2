@@ -167,6 +167,9 @@ export class WebSocketService {
         this.emit('conversation_update', message);
         break;
 
+      case 'USER_PROFILE_UPDATE':
+        this.emit('userProfileUpdate', message.data);
+        break;
 
       // ============================================
       // CHAT MESSAGES (NEW)
