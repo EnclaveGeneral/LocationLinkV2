@@ -324,6 +324,11 @@ export default function RequestsScreen() {
         renderItem={showSent ? renderSentRequest : renderPendingRequest}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{
+          paddingTop: width * 0.03,
+          paddingBottom: width * 0.03,
+        }}
+        ItemSeparatorComponent={() => <View style={{ height: width * 0.015 }} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             {showSent ? (<FontAwesome name="send-o" size={width * 0.135} color="#ddd" />)
@@ -433,7 +438,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     padding: width * 0.033,            // was: 15
     marginHorizontal: width * 0.022,   // was: 10
-    marginVertical: width * 0.011,     // was: 5
     borderRadius: width * 0.022        // was: 10
   },
   requestInfo: {

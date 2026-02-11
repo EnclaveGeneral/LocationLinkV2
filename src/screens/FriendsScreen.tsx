@@ -200,6 +200,11 @@ export default function FriendsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        contentContainerStyle={{
+          paddingTop: width * 0.03,
+          paddingBottom: width * 0.03,
+        }}
+        ItemSeparatorComponent={() => <View style={{ height: width * 0.015 }} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <MaterialIcons name="contacts" size={width * 0.20} color="#ddd" />
@@ -240,7 +245,6 @@ const styles = StyleSheet.create({
     borderWidth: width * 0.002,
     padding: width * 0.03,
     marginHorizontal: width * 0.03,
-    marginVertical: width * 0.04,
     borderRadius: width * 0.02,
   },
   friendInfo: {

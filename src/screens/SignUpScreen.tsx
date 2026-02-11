@@ -19,6 +19,7 @@ import CustomModal from "@/components/modal";
 import { authService } from "../services/authService";
 import { dataService } from "../services/dataService";
 import { Ionicons } from '@expo/vector-icons';
+import Entypo from '@expo/vector-icons/Entypo';
 
 // Get the current device size to style our elements appropriately.
 const {height, width} = Dimensions.get("screen");
@@ -116,38 +117,37 @@ export default function SignUpScreen() {
 
     let currentErrors = [];
 
-    let x = "❌";
-    let y = "✅";
+    let curIcon = 0;
 
-    let lengthCheck = x;
-    let uppeCaseCheck = x;
-    let lowerCaseCheck = x;
-    let numbersCheck = x;
-    let specialCheck = x;
-    let confirmCheck = y;
+    let lengthCheck = 0;
+    let uppeCaseCheck = 0;
+    let lowerCaseCheck = 0;
+    let numbersCheck = 0;
+    let specialCheck = 0;
+    let confirmCheck = 0;
 
     if (password.length >= 8) {
-      lengthCheck = y;
+      lengthCheck = 1;
     }
 
     if (/[A-Z]/.test(password)) {
-      uppeCaseCheck = y;
+      uppeCaseCheck = 1;
     }
 
     if (/[a-z]/.test(password)) {
-      lowerCaseCheck = y;
+      lowerCaseCheck = 1;
     }
 
     if (/[0-9]/.test(password)) {
-      numbersCheck = y;
+      numbersCheck = 1;
     }
 
     if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-      specialCheck = y;
+      specialCheck = 1;
     }
 
     if (password !== confirmPassword) {
-      confirmCheck = x;
+      confirmCheck = 1;
     }
 
     currentErrors.push(lengthCheck + " At Least 8 Characters");
@@ -354,7 +354,17 @@ export default function SignUpScreen() {
           </Text>
           {passwordErrors.map((curError, index) => (
             <Text key={index} style={[styles.individualError]}>
-              {curError}
+              {curError.charAt(0) === "1" ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={width * 0.03} color="#A910F5" />
+                  {curError.substring(1)}
+                </>
+              ) : (
+                <>
+                  <Entypo name="circle-with-cross" size={width * 0.03} color="#f80606ff" />
+                  {curError.substring(1)}
+                </>
+              )}
             </Text>
           ))}
         </View>
