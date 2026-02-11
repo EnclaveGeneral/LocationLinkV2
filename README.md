@@ -43,3 +43,9 @@ multiple users. Currently, it is supported through unconventional IOS and Androi
     </td>
   </tr>
 </table>
+
+## Download Resources
+Android Download: [![Download APK](https://img.shields.io/badge/Download-APK-green)](https://github.com/USERNAME/REPO/releases)
+
+IOS Alpha Enrollment: [![Join TestFlight](https://img.shields.io/badge/TestFlight-Join-blue)](https://testflight.apple.com/join/YOUR_CODE)
+
