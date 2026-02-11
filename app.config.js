@@ -65,7 +65,13 @@ export default {
         {
           "photoLibraryPermission": "LocationLink wants to access your gallery and media files."
         }
-      ]
+      ],
+      [
+        "expo-notifications", {
+        icon: "./assets/notification_icon.png",
+        color: "#9420ce",
+        defaultChannel: "messages"
+      }]
     ],
     extra: {
       "eas": {
